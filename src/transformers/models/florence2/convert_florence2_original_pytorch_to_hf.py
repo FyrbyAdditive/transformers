@@ -348,6 +348,7 @@ def convert_florence2_checkpoint(hf_model_id, pytorch_dump_folder, output_hub_pa
     tokenizer.image_token = "<image>"
     tokenizer.add_tokens(AddedToken(tokenizer.image_token, special=True, normalized=False), special_tokens=True)
     tokenizer.image_token_id = tokenizer.encode(tokenizer.image_token, add_special_tokens=False)[0]
+    tokenizer.extra_special_tokens = {"image_token": "<image>"}
 
     post_processor_config = {
         "ocr": {
