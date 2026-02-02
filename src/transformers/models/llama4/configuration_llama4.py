@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2025 The LLAMA4 and HuggingFace Inc. team. All rights reserved.
 #
 #
@@ -14,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
 
 from ...configuration_utils import PreTrainedConfig, layer_type_validation
 from ...modeling_rope_utils import RopeParameters
@@ -78,32 +76,32 @@ class Llama4VisionConfig(PreTrainedConfig):
         "model.layers.*.self_attn.o_proj": "rowwise",
         "vision_adapter.mlp.fc1": "colwise",
         "vision_adapter.mlp.fc2": "rowwise",
-        "patch_embedding.linear": "colwise_rep",
+        "patch_embedding.linear": "colwise_gather_output",
     }
     model_type = "llama4_vision_model"
     base_config_key = "vision_config"
 
     def __init__(
         self,
-        hidden_size: Optional[int] = 768,
-        hidden_act: Optional[str] = "gelu",
-        num_hidden_layers: Optional[int] = 34,
-        num_attention_heads: Optional[int] = 16,
-        num_channels: Optional[int] = 3,
-        intermediate_size: Optional[int] = 5632,
-        vision_output_dim: Optional[int] = 7680,
-        image_size: Optional[int] = 448,
-        patch_size: Optional[int] = 14,
-        norm_eps: Optional[float] = 1e-5,
-        vision_feature_select_strategy: Optional[str] = "default",
-        initializer_range: Optional[float] = 0.02,
-        pixel_shuffle_ratio: Optional[float] = 0.5,
-        projector_input_dim: Optional[int] = 4096,
-        projector_output_dim: Optional[int] = 4096,
-        multi_modal_projector_bias: Optional[bool] = False,
-        projector_dropout: Optional[float] = 0.0,
-        attention_dropout: Optional[float] = 0.0,
-        rope_parameters: Optional[RopeParameters | dict[str, RopeParameters]] = None,
+        hidden_size: int | None = 768,
+        hidden_act: str | None = "gelu",
+        num_hidden_layers: int | None = 34,
+        num_attention_heads: int | None = 16,
+        num_channels: int | None = 3,
+        intermediate_size: int | None = 5632,
+        vision_output_dim: int | None = 7680,
+        image_size: int | None = 448,
+        patch_size: int | None = 14,
+        norm_eps: float | None = 1e-5,
+        vision_feature_select_strategy: str | None = "default",
+        initializer_range: float | None = 0.02,
+        pixel_shuffle_ratio: float | None = 0.5,
+        projector_input_dim: int | None = 4096,
+        projector_output_dim: int | None = 4096,
+        multi_modal_projector_bias: bool | None = False,
+        projector_dropout: float | None = 0.0,
+        attention_dropout: float | None = 0.0,
+        rope_parameters: RopeParameters | dict[str, RopeParameters] | None = None,
         **kwargs,
     ):
         self.hidden_size = hidden_size
@@ -219,16 +217,14 @@ class Llama4TextConfig(PreTrainedConfig):
         "layers.*.self_attn.k_proj": "colwise",
         "layers.*.self_attn.v_proj": "colwise",
         "layers.*.self_attn.o_proj": "rowwise",
-        "layers.*.feed_forward.shared_expert.gate_proj": "local_colwise",
-        "layers.*.feed_forward.shared_expert.up_proj": "local_colwise",
-        "layers.*.feed_forward.shared_expert.down_proj": "local_rowwise",
-        "layers.*.feed_forward.experts.gate_up_proj": "local_packed_rowwise",  # row because not linear
-        "layers.*.feed_forward.experts.down_proj": "local_colwise",  # col because not linear
-        "layers.*.feed_forward.experts": "local",
-        "layers.*.feed_forward.gate_proj": "local_colwise",
-        "layers.*.feed_forward.up_proj": "local_colwise",
-        "layers.*.feed_forward.down_proj": "local_rowwise",
-        "layers.*.feed_forward": "gather",
+        "layers.*.feed_forward.shared_expert.gate_proj": "colwise",
+        "layers.*.feed_forward.shared_expert.up_proj": "colwise",
+        "layers.*.feed_forward.shared_expert.down_proj": "rowwise",
+        "layers.*.feed_forward.experts.gate_up_proj": "packed_rowwise",  # row because not linear
+        "layers.*.feed_forward.experts.down_proj": "colwise",  # col because not linear
+        "layers.*.feed_forward.gate_proj": "colwise",
+        "layers.*.feed_forward.up_proj": "colwise",
+        "layers.*.feed_forward.down_proj": "rowwise",
     }
     base_model_ep_plan = {
         "layers.*.self_attn.q_proj": "colwise",
@@ -237,10 +233,9 @@ class Llama4TextConfig(PreTrainedConfig):
         "layers.*.self_attn.o_proj": "rowwise",
         "layers.*.feed_forward.experts.gate_up_proj": "grouped_gemm",  # row because not linear
         "layers.*.feed_forward.experts.down_proj": "grouped_gemm",  # col because not linear
-        "layers.*.feed_forward.experts": "gather",  # all reduce
-        "layers.*.feed_forward.gate_proj": "local_colwise",
-        "layers.*.feed_forward.up_proj": "local_colwise",
-        "layers.*.feed_forward.down_proj": "local_rowwise",
+        "layers.*.feed_forward.gate_proj": "colwise",
+        "layers.*.feed_forward.up_proj": "colwise",
+        "layers.*.feed_forward.down_proj": "rowwise",
         "layers.*.feed_forward.router": "ep_router",
     }
 
@@ -272,7 +267,7 @@ class Llama4TextConfig(PreTrainedConfig):
         output_router_logits=False,
         router_aux_loss_coef=0.001,
         router_jitter_noise=0.0,
-        rope_parameters: Optional[RopeParameters | dict[str, RopeParameters]] = None,
+        rope_parameters: RopeParameters | dict[str, RopeParameters] | None = None,
         no_rope_layers=None,
         no_rope_layer_interval=4,
         attention_chunk_size=8192,
@@ -282,6 +277,10 @@ class Llama4TextConfig(PreTrainedConfig):
         attn_scale=0.1,
         **kwargs,
     ):
+        self.tie_word_embeddings = tie_word_embeddings
+        self.pad_token_id = pad_token_id
+        self.bos_token_id = bos_token_id
+        self.eos_token_id = eos_token_id
         self.attn_temperature_tuning = attn_temperature_tuning
         self.attn_scale = attn_scale
         self.floor_scale = floor_scale
@@ -338,13 +337,7 @@ class Llama4TextConfig(PreTrainedConfig):
         layer_type_validation(self.layer_types, self.num_hidden_layers)
 
         self.rope_parameters = rope_parameters
-        super().__init__(
-            pad_token_id=pad_token_id,
-            bos_token_id=bos_token_id,
-            eos_token_id=eos_token_id,
-            tie_word_embeddings=tie_word_embeddings,
-            **kwargs,
-        )
+        super().__init__(**kwargs)
 
 
 class Llama4Config(PreTrainedConfig):
@@ -426,7 +419,8 @@ class Llama4Config(PreTrainedConfig):
         elif isinstance(text_config, Llama4TextConfig):
             self.text_config = text_config
 
-        super().__init__(tie_word_embeddings=tie_word_embeddings, **kwargs)
+        self.tie_word_embeddings = tie_word_embeddings
+        super().__init__(**kwargs)
 
 
 __all__ = ["Llama4Config", "Llama4TextConfig", "Llama4VisionConfig"]
