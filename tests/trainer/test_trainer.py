@@ -5616,6 +5616,23 @@ if is_torch_available():
         "compensation_buffer_dtype": torch.bfloat16,
     }
 
+    # Bitsandbytes optimizer test parameters: (optim_name, mock_attr, expected_kwargs)
+    _BNB_OPTIMIZER_PARAMS = [
+        (OptimizerNames.ADAMW_BNB, "AdamW", default_adam_kwargs),
+        (OptimizerNames.ADAMW_8BIT, "AdamW", default_adam_kwargs),
+        (OptimizerNames.PAGED_ADAMW, "AdamW", default_adam_kwargs),
+        (OptimizerNames.PAGED_ADAMW_8BIT, "AdamW", default_adam_kwargs),
+        (OptimizerNames.LION, "Lion", default_lion_kwargs),
+        (OptimizerNames.LION_8BIT, "Lion", default_lion_kwargs),
+        (OptimizerNames.PAGED_LION, "Lion", default_lion_kwargs),
+        (OptimizerNames.PAGED_LION_8BIT, "Lion", default_lion_kwargs),
+        (OptimizerNames.ADEMAMIX, "AdEMAMix", default_ademamix_kwargs),
+        (OptimizerNames.ADEMAMIX_8BIT, "AdEMAMix", default_ademamix_kwargs),
+        (OptimizerNames.PAGED_ADEMAMIX, "AdEMAMix", default_ademamix_kwargs),
+        (OptimizerNames.PAGED_ADEMAMIX_8BIT, "AdEMAMix", default_ademamix_kwargs),
+    ]
+    _ALL_BNB_OPTIMIZERS = [p[0] for p in _BNB_OPTIMIZER_PARAMS]
+
     optim_test_params = [
         (
             OptimizerNames.ADAMW_TORCH,
@@ -5759,27 +5776,6 @@ if is_torch_available():
                 default_adam_kwargs,
             )
         )
-
-
-# Bitsandbytes optimizer test parameters: (optim_name, mock_attr, expected_kwargs_name)
-_BNB_OPTIMIZER_PARAMS = []
-_ALL_BNB_OPTIMIZERS = []
-if is_torch_available():
-    _BNB_OPTIMIZER_PARAMS = [
-        (OptimizerNames.ADAMW_BNB, "AdamW", default_adam_kwargs),
-        (OptimizerNames.ADAMW_8BIT, "AdamW", default_adam_kwargs),
-        (OptimizerNames.PAGED_ADAMW, "AdamW", default_adam_kwargs),
-        (OptimizerNames.PAGED_ADAMW_8BIT, "AdamW", default_adam_kwargs),
-        (OptimizerNames.LION, "Lion", default_lion_kwargs),
-        (OptimizerNames.LION_8BIT, "Lion", default_lion_kwargs),
-        (OptimizerNames.PAGED_LION, "Lion", default_lion_kwargs),
-        (OptimizerNames.PAGED_LION_8BIT, "Lion", default_lion_kwargs),
-        (OptimizerNames.ADEMAMIX, "AdEMAMix", default_ademamix_kwargs),
-        (OptimizerNames.ADEMAMIX_8BIT, "AdEMAMix", default_ademamix_kwargs),
-        (OptimizerNames.PAGED_ADEMAMIX, "AdEMAMix", default_ademamix_kwargs),
-        (OptimizerNames.PAGED_ADEMAMIX_8BIT, "AdEMAMix", default_ademamix_kwargs),
-    ]
-    _ALL_BNB_OPTIMIZERS = [p[0] for p in _BNB_OPTIMIZER_PARAMS]
 
 
 @require_torch
