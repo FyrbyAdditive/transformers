@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -48,49 +49,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Optimizer groups for cleaner dispatch
-_BITSANDBYTES_OPTIMIZERS = {
-    OptimizerNames.ADAMW_BNB,
-    OptimizerNames.ADAMW_8BIT,
-    OptimizerNames.PAGED_ADAMW,
-    OptimizerNames.PAGED_ADAMW_8BIT,
-    OptimizerNames.ADEMAMIX,
-    OptimizerNames.ADEMAMIX_8BIT,
-    OptimizerNames.PAGED_ADEMAMIX,
-    OptimizerNames.PAGED_ADEMAMIX_8BIT,
-    OptimizerNames.LION,
-    OptimizerNames.LION_8BIT,
-    OptimizerNames.PAGED_LION,
-    OptimizerNames.PAGED_LION_8BIT,
-    OptimizerNames.RMSPROP_BNB,
-    OptimizerNames.RMSPROP_8BIT,
-    OptimizerNames.RMSPROP_32BIT,
-}
 
-_GALORE_OPTIMIZERS = {
-    OptimizerNames.GALORE_ADAMW,
-    OptimizerNames.GALORE_ADAMW_8BIT,
-    OptimizerNames.GALORE_ADAFACTOR,
-    OptimizerNames.GALORE_ADAMW_LAYERWISE,
-    OptimizerNames.GALORE_ADAMW_8BIT_LAYERWISE,
-    OptimizerNames.GALORE_ADAFACTOR_LAYERWISE,
-}
+@dataclass
+class OptimizerContext:
+    """Context object passed to all optimizer handlers."""
 
-_APOLLO_OPTIMIZERS = {
-    OptimizerNames.APOLLO_ADAMW,
-    OptimizerNames.APOLLO_ADAMW_LAYERWISE,
-}
-
-_SCHEDULE_FREE_OPTIMIZERS = {
-    OptimizerNames.SCHEDULE_FREE_RADAM,
-    OptimizerNames.SCHEDULE_FREE_ADAMW,
-    OptimizerNames.SCHEDULE_FREE_SGD,
-}
-
-_TORCHAO_OPTIMIZERS = {
-    OptimizerNames.ADAMW_TORCH_4BIT,
-    OptimizerNames.ADAMW_TORCH_8BIT,
-}
+    args: TrainingArguments
+    model: PreTrainedModel | None
+    optimizer_kwargs: dict[str, Any]
+    adam_kwargs: dict[str, Any]
+    optim_args: dict[str, str]
 
 
 def _parse_optim_args(optim_args_str: str | None) -> dict[str, str]:
@@ -198,74 +166,56 @@ def _setup_low_rank_optimizer(
 # =============================================================================
 
 
-def _get_adafactor(optimizer_kwargs: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+def _get_adafactor(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get Adafactor optimizer."""
-    optimizer_kwargs.update({"scale_parameter": False, "relative_step": False})
-    return Adafactor, optimizer_kwargs
+    ctx.optimizer_kwargs.update({"scale_parameter": False, "relative_step": False})
+    return Adafactor, ctx.optimizer_kwargs
 
 
-def _get_adamw_torch(
-    optim: OptimizerNames,
-    optimizer_kwargs: dict[str, Any],
-    adam_kwargs: dict[str, Any],
-) -> tuple[Any, dict[str, Any]]:
+def _get_adamw_torch(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get PyTorch AdamW optimizer (regular or fused)."""
     from torch.optim import AdamW
 
-    optimizer_kwargs.update(adam_kwargs)
-    if optim == OptimizerNames.ADAMW_TORCH_FUSED:
-        optimizer_kwargs.update({"fused": True})
-    return AdamW, optimizer_kwargs
+    ctx.optimizer_kwargs.update(ctx.adam_kwargs)
+    if ctx.args.optim == OptimizerNames.ADAMW_TORCH_FUSED:
+        ctx.optimizer_kwargs.update({"fused": True})
+    return AdamW, ctx.optimizer_kwargs
 
 
-def _get_adamw_torch_xla(
-    optimizer_kwargs: dict[str, Any],
-    adam_kwargs: dict[str, Any],
-) -> tuple[Any, dict[str, Any]]:
+def _get_adamw_torch_xla(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get Torch XLA syncfree AdamW optimizer."""
     try:
         from torch_xla.amp.syncfree import AdamW
 
-        optimizer_kwargs.update(adam_kwargs)
-        return AdamW, optimizer_kwargs
+        ctx.optimizer_kwargs.update(ctx.adam_kwargs)
+        return AdamW, ctx.optimizer_kwargs
     except ImportError:
         raise ValueError("Trainer failed to import syncfree AdamW from torch_xla.")
 
 
-def _get_adamw_torch_npu_fused(
-    optimizer_kwargs: dict[str, Any],
-    adam_kwargs: dict[str, Any],
-) -> tuple[Any, dict[str, Any]]:
+def _get_adamw_torch_npu_fused(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get NPU Fused AdamW optimizer."""
     try:
         from torch_npu.optim import NpuFusedAdamW
 
-        optimizer_kwargs.update(adam_kwargs)
-        return NpuFusedAdamW, optimizer_kwargs
+        ctx.optimizer_kwargs.update(ctx.adam_kwargs)
+        return NpuFusedAdamW, ctx.optimizer_kwargs
     except ImportError:
         raise ValueError("Trainer failed to import FusedAdamW from torch_npu.")
 
 
-def _get_adamw_apex_fused(
-    optimizer_kwargs: dict[str, Any],
-    adam_kwargs: dict[str, Any],
-) -> tuple[Any, dict[str, Any]]:
+def _get_adamw_apex_fused(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get Apex Fused Adam optimizer."""
     try:
         from apex.optimizers import FusedAdam
 
-        optimizer_kwargs.update(adam_kwargs)
-        return FusedAdam, optimizer_kwargs
+        ctx.optimizer_kwargs.update(ctx.adam_kwargs)
+        return FusedAdam, ctx.optimizer_kwargs
     except ImportError:
         raise ValueError("Trainer tried to instantiate apex FusedAdam but apex is not installed!")
 
 
-def _get_bitsandbytes_optimizer(
-    args: TrainingArguments,
-    optimizer_kwargs: dict[str, Any],
-    adam_kwargs: dict[str, Any],
-    optim_args: dict[str, str],
-) -> tuple[Any, dict[str, Any]]:
+def _get_bitsandbytes_optimizer(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get bitsandbytes optimizer (AdamW, Lion, RMSprop variants)."""
     if not is_bitsandbytes_available():
         raise ImportError(
@@ -274,91 +224,84 @@ def _get_bitsandbytes_optimizer(
 
     from bitsandbytes.optim import AdamW, Lion, RMSprop
 
-    optim_name = args.optim
+    optim_name = ctx.args.optim
     is_paged = "paged" in optim_name
     optim_bits = 8 if "8bit" in optim_name else 32
     optimizer_cls = None
-    additional_optim_kwargs = adam_kwargs
+    additional_optim_kwargs = ctx.adam_kwargs
 
     if "adam" in optim_name:
         optimizer_cls = AdamW
     elif "lion" in optim_name:
         optimizer_cls = Lion
-        additional_optim_kwargs = {"betas": (args.adam_beta1, args.adam_beta2)}
+        additional_optim_kwargs = {"betas": (ctx.args.adam_beta1, ctx.args.adam_beta2)}
     elif "rmsprop" in optim_name:
         optimizer_cls = RMSprop
-        additional_optim_kwargs = optim_args
+        additional_optim_kwargs = ctx.optim_args
     elif "ademamix" in optim_name:
         from bitsandbytes.optim import AdEMAMix
 
         optimizer_cls = AdEMAMix
         additional_optim_kwargs = {
             "betas": (
-                float(optim_args.get("beta1", args.adam_beta1)),
-                float(optim_args.get("beta2", args.adam_beta2)),
-                float(optim_args.get("beta3", 0.9999)),
+                float(ctx.optim_args.get("beta1", ctx.args.adam_beta1)),
+                float(ctx.optim_args.get("beta2", ctx.args.adam_beta2)),
+                float(ctx.optim_args.get("beta3", 0.9999)),
             ),
-            "alpha": float(optim_args.get("alpha", 5.0)),
-            "eps": float(optim_args.get("eps", args.adam_epsilon)),
+            "alpha": float(ctx.optim_args.get("alpha", 5.0)),
+            "eps": float(ctx.optim_args.get("eps", ctx.args.adam_epsilon)),
         }
-        if "t_alpha" in optim_args:
-            additional_optim_kwargs["t_alpha"] = int(optim_args["t_alpha"])
-        if "t_beta3" in optim_args:
-            additional_optim_kwargs["t_beta3"] = int(optim_args["t_beta3"])
+        if "t_alpha" in ctx.optim_args:
+            additional_optim_kwargs["t_alpha"] = int(ctx.optim_args["t_alpha"])
+        if "t_beta3" in ctx.optim_args:
+            additional_optim_kwargs["t_beta3"] = int(ctx.optim_args["t_beta3"])
 
     bnb_kwargs = {"optim_bits": optim_bits}
     if "rmsprop" not in optim_name:
         bnb_kwargs["is_paged"] = is_paged
 
-    optimizer_kwargs.update(additional_optim_kwargs)
-    optimizer_kwargs.update(bnb_kwargs)
-    return optimizer_cls, optimizer_kwargs
+    ctx.optimizer_kwargs.update(additional_optim_kwargs)
+    ctx.optimizer_kwargs.update(bnb_kwargs)
+    return optimizer_cls, ctx.optimizer_kwargs
 
 
-def _get_adamw_anyprecision(
-    optimizer_kwargs: dict[str, Any],
-    adam_kwargs: dict[str, Any],
-    optim_args: dict[str, str],
-) -> tuple[Any, dict[str, Any]]:
+def _get_adamw_anyprecision(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get AnyPrecision AdamW optimizer."""
     try:
         from torchdistx.optimizers import AnyPrecisionAdamW
 
-        optimizer_kwargs.update(adam_kwargs)
-        optimizer_kwargs.update(
+        ctx.optimizer_kwargs.update(ctx.adam_kwargs)
+        ctx.optimizer_kwargs.update(
             {
-                "use_kahan_summation": strtobool(optim_args.get("use_kahan_summation", "False")),
-                "momentum_dtype": getattr(torch, optim_args.get("momentum_dtype", "float32")),
-                "variance_dtype": getattr(torch, optim_args.get("variance_dtype", "float32")),
-                "compensation_buffer_dtype": getattr(torch, optim_args.get("compensation_buffer_dtype", "bfloat16")),
+                "use_kahan_summation": strtobool(ctx.optim_args.get("use_kahan_summation", "False")),
+                "momentum_dtype": getattr(torch, ctx.optim_args.get("momentum_dtype", "float32")),
+                "variance_dtype": getattr(torch, ctx.optim_args.get("variance_dtype", "float32")),
+                "compensation_buffer_dtype": getattr(
+                    torch, ctx.optim_args.get("compensation_buffer_dtype", "bfloat16")
+                ),
             }
         )
-        return AnyPrecisionAdamW, optimizer_kwargs
+        return AnyPrecisionAdamW, ctx.optimizer_kwargs
     except ImportError:
         raise ValueError("Please install https://github.com/pytorch/torchdistx")
 
 
-def _get_sgd(optimizer_kwargs: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+def _get_sgd(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get SGD optimizer."""
-    return torch.optim.SGD, optimizer_kwargs
+    return torch.optim.SGD, ctx.optimizer_kwargs
 
 
-def _get_adagrad(optimizer_kwargs: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+def _get_adagrad(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get Adagrad optimizer."""
-    return torch.optim.Adagrad, optimizer_kwargs
+    return torch.optim.Adagrad, ctx.optimizer_kwargs
 
 
-def _get_rmsprop(optimizer_kwargs: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+def _get_rmsprop(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get RMSprop optimizer."""
-    return torch.optim.RMSprop, optimizer_kwargs
+    return torch.optim.RMSprop, ctx.optimizer_kwargs
 
 
-def _get_galore_optimizer(
-    args: TrainingArguments,
-    model: PreTrainedModel,
-    optimizer_kwargs: dict[str, Any],
-    optim_args: dict[str, str],
-) -> tuple[Any, dict[str, Any]]:
+def _get_galore_optimizer(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get GaLore optimizer."""
     if not is_galore_torch_available():
         raise ImportError(
@@ -377,27 +320,21 @@ def _get_galore_optimizer(
     }
 
     galore_optim_kwargs = {
-        "rank": int(optim_args.pop("rank", 128)),
-        "update_proj_gap": int(optim_args.pop("update_proj_gap", 200)),
-        "scale": float(optim_args.pop("scale", 0.25)),
-        "proj_type": optim_args.pop("proj_type", "std"),
+        "rank": int(ctx.optim_args.pop("rank", 128)),
+        "update_proj_gap": int(ctx.optim_args.pop("update_proj_gap", 200)),
+        "scale": float(ctx.optim_args.pop("scale", 0.25)),
+        "proj_type": ctx.optim_args.pop("proj_type", "std"),
     }
 
     optimizer_cls, optimizer_kwargs = _setup_low_rank_optimizer(
-        args, model, args.optim, optimizer_mapping, galore_optim_kwargs, optimizer_kwargs
+        ctx.args, ctx.model, ctx.args.optim, optimizer_mapping, galore_optim_kwargs, ctx.optimizer_kwargs
     )
-    if args.optim == OptimizerNames.GALORE_ADAFACTOR:
+    if ctx.args.optim == OptimizerNames.GALORE_ADAFACTOR:
         optimizer_kwargs.update({"scale_parameter": False, "relative_step": False})
     return optimizer_cls, optimizer_kwargs
 
 
-def _get_apollo_optimizer(
-    args: TrainingArguments,
-    model: PreTrainedModel,
-    optimizer_kwargs: dict[str, Any],
-    adam_kwargs: dict[str, Any],
-    optim_args: dict[str, str],
-) -> tuple[Any, dict[str, Any]]:
+def _get_apollo_optimizer(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get Apollo optimizer."""
     if not is_apollo_torch_available():
         raise ImportError(
@@ -412,23 +349,21 @@ def _get_apollo_optimizer(
     }
 
     apollo_optim_kwargs = {
-        "rank": int(optim_args.pop("rank", 128)),
-        "proj": optim_args.pop("proj", "random"),
-        "scale_type": optim_args.pop("scale_type", "channel"),
-        "update_proj_gap": int(optim_args.pop("update_proj_gap", 200)),
-        "scale": float(optim_args.pop("scale", 1.0)),
-        "proj_type": optim_args.pop("proj_type", "std"),
+        "rank": int(ctx.optim_args.pop("rank", 128)),
+        "proj": ctx.optim_args.pop("proj", "random"),
+        "scale_type": ctx.optim_args.pop("scale_type", "channel"),
+        "update_proj_gap": int(ctx.optim_args.pop("update_proj_gap", 200)),
+        "scale": float(ctx.optim_args.pop("scale", 1.0)),
+        "proj_type": ctx.optim_args.pop("proj_type", "std"),
     }
-    apollo_optim_kwargs.update(adam_kwargs)
+    apollo_optim_kwargs.update(ctx.adam_kwargs)
 
-    return _setup_low_rank_optimizer(args, model, args.optim, optimizer_mapping, apollo_optim_kwargs, optimizer_kwargs)
+    return _setup_low_rank_optimizer(
+        ctx.args, ctx.model, ctx.args.optim, optimizer_mapping, apollo_optim_kwargs, ctx.optimizer_kwargs
+    )
 
 
-def _get_lomo_optimizer(
-    args: TrainingArguments,
-    model: PreTrainedModel,
-    optimizer_kwargs: dict[str, Any],
-) -> tuple[Any, dict[str, Any]]:
+def _get_lomo_optimizer(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get LOMO optimizer."""
     if not is_lomo_available():
         raise ImportError(
@@ -436,44 +371,36 @@ def _get_lomo_optimizer(
             "Install it with `pip install lomo-optim`"
         )
 
-    if model is None:
+    if ctx.model is None:
         raise ValueError("You need to pass a `model` in order to correctly initialize a LOMO optimizer.")
 
     from lomo_optim import AdaLomo, Lomo
 
-    optimizer_cls = AdaLomo if "ada" in args.optim else Lomo
-    optimizer_kwargs.update({"model": model})
-    return optimizer_cls, optimizer_kwargs
+    optimizer_cls = AdaLomo if "ada" in ctx.args.optim else Lomo
+    ctx.optimizer_kwargs.update({"model": ctx.model})
+    return optimizer_cls, ctx.optimizer_kwargs
 
 
-def _get_grokadamw(
-    optimizer_kwargs: dict[str, Any],
-    optim_args: dict[str, str],
-) -> tuple[Any, dict[str, Any]]:
+def _get_grokadamw(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get GrokAdamW optimizer."""
     if not is_grokadamw_available():
         raise ValueError("Please install grokadamw with `pip install grokadamw`")
 
     from grokadamw import GrokAdamW
 
-    optimizer_kwargs.update(
+    ctx.optimizer_kwargs.update(
         {
-            "alpha_init": float(optim_args.get("alpha_init", 0.98)),
-            "lamb": float(optim_args.get("lamb", 2.0)),
-            "gamma": float(optim_args.get("gamma", 0.1)),
-            "grokking_signal_decay_rate": float(optim_args.get("grokking_signal_decay_rate", 0.1)),
-            "gradient_clipping": float(optim_args.get("gradient_clipping", 1.0)),
+            "alpha_init": float(ctx.optim_args.get("alpha_init", 0.98)),
+            "lamb": float(ctx.optim_args.get("lamb", 2.0)),
+            "gamma": float(ctx.optim_args.get("gamma", 0.1)),
+            "grokking_signal_decay_rate": float(ctx.optim_args.get("grokking_signal_decay_rate", 0.1)),
+            "gradient_clipping": float(ctx.optim_args.get("gradient_clipping", 1.0)),
         }
     )
-    return GrokAdamW, optimizer_kwargs
+    return GrokAdamW, ctx.optimizer_kwargs
 
 
-def _get_torchao_optimizer(
-    args: TrainingArguments,
-    optimizer_kwargs: dict[str, Any],
-    adam_kwargs: dict[str, Any],
-    optim_args: dict[str, str],
-) -> tuple[Any, dict[str, Any]]:
+def _get_torchao_optimizer(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get TorchAO 4-bit or 8-bit optimizer."""
     if not is_torchao_available() or version.parse(importlib.metadata.version("torchao")) < version.parse("0.4.0"):
         raise ImportError(
@@ -493,27 +420,22 @@ def _get_torchao_optimizer(
     else:
         from torchao.prototype.low_bit_optim import AdamW4bit, AdamW8bit
 
-    if args.optim == OptimizerNames.ADAMW_TORCH_4BIT:
+    if ctx.args.optim == OptimizerNames.ADAMW_TORCH_4BIT:
         optimizer_cls = AdamW4bit
     else:
         optimizer_cls = AdamW8bit
 
-    optimizer_kwargs.update(
+    ctx.optimizer_kwargs.update(
         {
-            "block_size": optim_args.get("block_size", 256),
-            "bf16_stochastic_round": strtobool(optim_args.get("bf16_stochastic_round", "False")),
+            "block_size": ctx.optim_args.get("block_size", 256),
+            "bf16_stochastic_round": strtobool(ctx.optim_args.get("bf16_stochastic_round", "False")),
         }
     )
-    optimizer_kwargs.update(adam_kwargs)
-    return optimizer_cls, optimizer_kwargs
+    ctx.optimizer_kwargs.update(ctx.adam_kwargs)
+    return optimizer_cls, ctx.optimizer_kwargs
 
 
-def _get_schedule_free_optimizer(
-    args: TrainingArguments,
-    optimizer_kwargs: dict[str, Any],
-    adam_kwargs: dict[str, Any],
-    optim_args: dict[str, str],
-) -> tuple[Any, dict[str, Any]]:
+def _get_schedule_free_optimizer(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get ScheduleFree optimizer."""
     if not is_schedulefree_available():
         raise ImportError(
@@ -525,7 +447,7 @@ def _get_schedule_free_optimizer(
     additional_optim_kwargs = {}
     require_warmup = True
 
-    if args.optim == OptimizerNames.SCHEDULE_FREE_RADAM:
+    if ctx.args.optim == OptimizerNames.SCHEDULE_FREE_RADAM:
         if not is_schedulefree_available("1.4.0"):
             raise ImportError(
                 "You need to install `schedulefree>=1.4.0` in order to use RAdamScheduleFree optimizer. "
@@ -534,35 +456,30 @@ def _get_schedule_free_optimizer(
         from schedulefree import RAdamScheduleFree
 
         optimizer_cls = RAdamScheduleFree
-        additional_optim_kwargs = adam_kwargs
+        additional_optim_kwargs = ctx.adam_kwargs
         require_warmup = False
-    elif args.optim == OptimizerNames.SCHEDULE_FREE_ADAMW:
+    elif ctx.args.optim == OptimizerNames.SCHEDULE_FREE_ADAMW:
         optimizer_cls = AdamWScheduleFree
-        additional_optim_kwargs = adam_kwargs
-    elif args.optim == OptimizerNames.SCHEDULE_FREE_SGD:
+        additional_optim_kwargs = ctx.adam_kwargs
+    elif ctx.args.optim == OptimizerNames.SCHEDULE_FREE_SGD:
         optimizer_cls = SGDScheduleFree
     else:
         raise ValueError("Invalid schedulefree optimizer")
 
-    additional_optim_kwargs["weight_decay"] = args.weight_decay
+    additional_optim_kwargs["weight_decay"] = ctx.args.weight_decay
     if require_warmup:
-        additional_optim_kwargs["warmup_steps"] = args.warmup_steps
+        additional_optim_kwargs["warmup_steps"] = ctx.args.warmup_steps
     additional_optim_kwargs.update(
         {
-            "weight_lr_power": float(optim_args.get("weight_lr_power", 2.0)),
-            "r": float(optim_args.get("r", 0.0)),
+            "weight_lr_power": float(ctx.optim_args.get("weight_lr_power", 2.0)),
+            "r": float(ctx.optim_args.get("r", 0.0)),
         }
     )
-    optimizer_kwargs.update(additional_optim_kwargs)
-    return optimizer_cls, optimizer_kwargs
+    ctx.optimizer_kwargs.update(additional_optim_kwargs)
+    return optimizer_cls, ctx.optimizer_kwargs
 
 
-def _get_stable_adamw(
-    args: TrainingArguments,
-    optimizer_kwargs: dict[str, Any],
-    adam_kwargs: dict[str, Any],
-    optim_args: dict[str, str],
-) -> tuple[Any, dict[str, Any]]:
+def _get_stable_adamw(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
     """Get StableAdamW optimizer from torch-optimi."""
     if not is_torch_optimi_available():
         raise ImportError(
@@ -571,107 +488,91 @@ def _get_stable_adamw(
         )
     from optimi import StableAdamW
 
-    max_lr = optim_args.pop("max_lr", None)
+    max_lr = ctx.optim_args.pop("max_lr", None)
     if max_lr is not None:
         max_lr = float(max_lr)
 
-    kahan_sum = optim_args.pop("kahan_sum", None)
+    kahan_sum = ctx.optim_args.pop("kahan_sum", None)
     if kahan_sum is not None:
         kahan_sum = bool(kahan_sum)
 
-    adam_kwargs["weight_decay"] = args.weight_decay
+    ctx.adam_kwargs["weight_decay"] = ctx.args.weight_decay
     stable_adamw_kwargs = {
-        "decouple_lr": bool(optim_args.pop("decouple_lr", False)),
+        "decouple_lr": bool(ctx.optim_args.pop("decouple_lr", False)),
         "max_lr": max_lr,
         "kahan_sum": kahan_sum,
     }
 
-    optimizer_kwargs.update(adam_kwargs)
-    optimizer_kwargs.update(stable_adamw_kwargs)
-    return StableAdamW, optimizer_kwargs
+    ctx.optimizer_kwargs.update(ctx.adam_kwargs)
+    ctx.optimizer_kwargs.update(stable_adamw_kwargs)
+    return StableAdamW, ctx.optimizer_kwargs
 
 
 # =============================================================================
-# Main entry point
+# Dispatch table
 # =============================================================================
 
+_BITSANDBYTES_OPTIMIZERS = [
+    OptimizerNames.ADAMW_BNB,
+    OptimizerNames.ADAMW_8BIT,
+    OptimizerNames.PAGED_ADAMW,
+    OptimizerNames.PAGED_ADAMW_8BIT,
+    OptimizerNames.ADEMAMIX,
+    OptimizerNames.ADEMAMIX_8BIT,
+    OptimizerNames.PAGED_ADEMAMIX,
+    OptimizerNames.PAGED_ADEMAMIX_8BIT,
+    OptimizerNames.LION,
+    OptimizerNames.LION_8BIT,
+    OptimizerNames.PAGED_LION,
+    OptimizerNames.PAGED_LION_8BIT,
+    OptimizerNames.RMSPROP_BNB,
+    OptimizerNames.RMSPROP_8BIT,
+    OptimizerNames.RMSPROP_32BIT,
+]
 
-def get_optimizer_cls_and_kwargs(
-    args: TrainingArguments,
-    model: PreTrainedModel | None = None,
-) -> tuple[Any, dict[str, Any]]:
-    """
-    Returns the optimizer class and optimizer parameters based on the training arguments.
+_GALORE_OPTIMIZERS = [
+    OptimizerNames.GALORE_ADAMW,
+    OptimizerNames.GALORE_ADAMW_8BIT,
+    OptimizerNames.GALORE_ADAFACTOR,
+    OptimizerNames.GALORE_ADAMW_LAYERWISE,
+    OptimizerNames.GALORE_ADAMW_8BIT_LAYERWISE,
+    OptimizerNames.GALORE_ADAFACTOR_LAYERWISE,
+]
 
-    Args:
-        args (`TrainingArguments`):
-            The training arguments for the training session.
-        model (`PreTrainedModel`, *optional*):
-            The model being trained. Required for some optimizers (GaLore, Apollo, LOMO).
+_APOLLO_OPTIMIZERS = [
+    OptimizerNames.APOLLO_ADAMW,
+    OptimizerNames.APOLLO_ADAMW_LAYERWISE,
+]
 
-    Returns:
-        A tuple containing the optimizer class and a dictionary of optimizer keyword arguments.
-    """
-    # Parse optimizer arguments
-    optim_args = _parse_optim_args(args.optim_args)
+_TORCHAO_OPTIMIZERS = [
+    OptimizerNames.ADAMW_TORCH_4BIT,
+    OptimizerNames.ADAMW_TORCH_8BIT,
+]
 
-    # Common kwargs
-    optimizer_kwargs = {"lr": args.learning_rate}
-    adam_kwargs = {
-        "betas": (args.adam_beta1, args.adam_beta2),
-        "eps": args.adam_epsilon,
-    }
+_SCHEDULE_FREE_OPTIMIZERS = [
+    OptimizerNames.SCHEDULE_FREE_RADAM,
+    OptimizerNames.SCHEDULE_FREE_ADAMW,
+    OptimizerNames.SCHEDULE_FREE_SGD,
+]
 
-    # Dispatch to appropriate handler
-    if args.optim == OptimizerNames.ADAFACTOR:
-        return _get_adafactor(optimizer_kwargs)
-
-    if args.optim in (OptimizerNames.ADAMW_TORCH, OptimizerNames.ADAMW_TORCH_FUSED):
-        return _get_adamw_torch(args.optim, optimizer_kwargs, adam_kwargs)
-
-    if args.optim == OptimizerNames.ADAMW_TORCH_XLA:
-        return _get_adamw_torch_xla(optimizer_kwargs, adam_kwargs)
-
-    if args.optim == OptimizerNames.ADAMW_TORCH_NPU_FUSED:
-        return _get_adamw_torch_npu_fused(optimizer_kwargs, adam_kwargs)
-
-    if args.optim == OptimizerNames.ADAMW_APEX_FUSED:
-        return _get_adamw_apex_fused(optimizer_kwargs, adam_kwargs)
-
-    if args.optim in _BITSANDBYTES_OPTIMIZERS:
-        return _get_bitsandbytes_optimizer(args, optimizer_kwargs, adam_kwargs, optim_args)
-
-    if args.optim == OptimizerNames.ADAMW_ANYPRECISION:
-        return _get_adamw_anyprecision(optimizer_kwargs, adam_kwargs, optim_args)
-
-    if args.optim == OptimizerNames.SGD:
-        return _get_sgd(optimizer_kwargs)
-
-    if args.optim == OptimizerNames.ADAGRAD:
-        return _get_adagrad(optimizer_kwargs)
-
-    if args.optim == OptimizerNames.RMSPROP:
-        return _get_rmsprop(optimizer_kwargs)
-
-    if args.optim in _GALORE_OPTIMIZERS:
-        return _get_galore_optimizer(args, model, optimizer_kwargs, optim_args)
-
-    if args.optim in _APOLLO_OPTIMIZERS:
-        return _get_apollo_optimizer(args, model, optimizer_kwargs, adam_kwargs, optim_args)
-
-    if args.optim in (OptimizerNames.LOMO, OptimizerNames.ADALOMO):
-        return _get_lomo_optimizer(args, model, optimizer_kwargs)
-
-    if args.optim == OptimizerNames.GROKADAMW:
-        return _get_grokadamw(optimizer_kwargs, optim_args)
-
-    if args.optim in _TORCHAO_OPTIMIZERS:
-        return _get_torchao_optimizer(args, optimizer_kwargs, adam_kwargs, optim_args)
-
-    if args.optim in _SCHEDULE_FREE_OPTIMIZERS:
-        return _get_schedule_free_optimizer(args, optimizer_kwargs, adam_kwargs, optim_args)
-
-    if args.optim == OptimizerNames.STABLE_ADAMW:
-        return _get_stable_adamw(args, optimizer_kwargs, adam_kwargs, optim_args)
-
-    raise ValueError(f"Trainer cannot instantiate unsupported optimizer: {args.optim}")
+_OPTIMIZER_HANDLERS = {
+    OptimizerNames.ADAFACTOR: _get_adafactor,
+    OptimizerNames.ADAMW_TORCH: _get_adamw_torch,
+    OptimizerNames.ADAMW_TORCH_FUSED: _get_adamw_torch,
+    OptimizerNames.ADAMW_TORCH_XLA: _get_adamw_torch_xla,
+    OptimizerNames.ADAMW_TORCH_NPU_FUSED: _get_adamw_torch_npu_fused,
+    OptimizerNames.ADAMW_APEX_FUSED: _get_adamw_apex_fused,
+    OptimizerNames.ADAMW_ANYPRECISION: _get_adamw_anyprecision,
+    OptimizerNames.SGD: _get_sgd,
+    OptimizerNames.ADAGRAD: _get_adagrad,
+    OptimizerNames.RMSPROP: _get_rmsprop,
+    OptimizerNames.GROKADAMW: _get_grokadamw,
+    OptimizerNames.STABLE_ADAMW: _get_stable_adamw,
+    OptimizerNames.LOMO: _get_lomo_optimizer,
+    OptimizerNames.ADALOMO: _get_lomo_optimizer,
+    **dict.fromkeys(_BITSANDBYTES_OPTIMIZERS, _get_bitsandbytes_optimizer),
+    **dict.fromkeys(_GALORE_OPTIMIZERS, _get_galore_optimizer),
+    **dict.fromkeys(_APOLLO_OPTIMIZERS, _get_apollo_optimizer),
+    **dict.fromkeys(_TORCHAO_OPTIMIZERS, _get_torchao_optimizer),
+    **dict.fromkeys(_SCHEDULE_FREE_OPTIMIZERS, _get_schedule_free_optimizer),
+}

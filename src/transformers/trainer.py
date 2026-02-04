@@ -83,7 +83,7 @@ from .trainer_callback import (
     TrainerControl,
     TrainerState,
 )
-from .trainer_optimizer import get_optimizer_cls_and_kwargs
+from .trainer_optimizer import _OPTIMIZER_HANDLERS, OptimizerContext, _parse_optim_args
 from .trainer_pt_utils import (
     EvalLoopContainer,
     IterableDatasetShard,
@@ -1295,7 +1295,22 @@ class Trainer:
         Returns:
             A tuple containing the optimizer class and a dictionary of optimizer keyword arguments.
         """
-        return get_optimizer_cls_and_kwargs(args, model)
+        ctx = OptimizerContext(
+            args=args,
+            model=model,
+            optimizer_kwargs={"lr": args.learning_rate},
+            adam_kwargs={
+                "betas": (args.adam_beta1, args.adam_beta2),
+                "eps": args.adam_epsilon,
+            },
+            optim_args=_parse_optim_args(args.optim_args),
+        )
+
+        handler = _OPTIMIZER_HANDLERS.get(args.optim)
+        if handler is None:
+            raise ValueError(f"Trainer cannot instantiate unsupported optimizer: {args.optim}")
+
+        return handler(ctx)
 
     def create_scheduler(self, num_training_steps: int, optimizer: torch.optim.Optimizer = None):
         """
