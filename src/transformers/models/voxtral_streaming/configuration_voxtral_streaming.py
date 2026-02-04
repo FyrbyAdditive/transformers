@@ -15,6 +15,11 @@
 from ...configuration_utils import PreTrainedConfig
 from ...modeling_rope_utils import RotaryEmbeddingConfigMixin
 from ..auto import CONFIG_MAPPING, AutoConfig
+from ..mistral.configuration_mistral import MistralConfig
+
+
+class VoxtralStreamingTextConfig(MistralConfig):
+    model_type = "voxtral_streaming_text"
 
 
 class VoxtralStreamingEncoderConfig(PreTrainedConfig, RotaryEmbeddingConfigMixin):
@@ -210,4 +215,4 @@ class VoxtralStreamingConfig(PreTrainedConfig):
         super().__init__(**kwargs)
 
 
-__all__ = ["VoxtralStreamingEncoderConfig", "VoxtralStreamingConfig"]
+__all__ = ["VoxtralStreamingEncoderConfig", "VoxtralStreamingConfig", "VoxtralStreamingTextConfig"]

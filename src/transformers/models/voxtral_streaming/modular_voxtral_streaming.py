@@ -26,7 +26,8 @@ from ...modeling_layers import GradientCheckpointingLayer
 from ...modeling_outputs import BaseModelOutputWithPast, BaseModelOutputWithPooling, CausalLMOutputWithPast
 from ...modeling_utils import PreTrainedModel
 from ...models.llama.modeling_llama import LlamaRotaryEmbedding
-from ...models.mistral.modeling_mistral import MistralAttention, MistralMLP, MistralRMSNorm
+from ...models.mistral.modeling_mistral import MistralAttention, MistralMLP, MistralRMSNorm, MistralDecoderLayer, MistralForCausalLM, MistralPreTrainedModel
+from ...models.mistral.configuration_mistral import MistralConfig
 from ...models.voxtral.modeling_voxtral import (
     VoxtralForConditionalGeneration,
     VoxtralPreTrainedModel,
@@ -38,7 +39,6 @@ from .configuration_voxtral_streaming import VoxtralStreamingEncoderConfig
 
 
 logger = logging.get_logger(__name__)
-
 
 class Conv1dCacheLayer:
     def __init__(self, conv_config):
@@ -122,6 +122,7 @@ class VoxtralStreamingCausalConv1d(nn.Conv1d):
             x = nn.functional.pad(x, (self._padding_total, 0))
 
         return super().forward(x)
+
 
 class VoxtralStreamingRMSNorm(MistralRMSNorm): ...
 
@@ -324,27 +325,69 @@ class VoxtralStreamingEncoder(VoxtralStreamingPreTrainedModel):
         )
 
 
-# class MistralStreamingAdaRmsNorm(nn.Module):
-#     def __init__(self, config: MistralConfig):
-#         super().__init__()
-#         # TODO: how to add the intermediate size to the config? since it already the mistral one? new model? new config only?
-#         self.linear1 = nn.Linear(config.hidden_size, 32, bias=False)
-#         self.linear2 = nn.Linear(32, config.hidden_size, bias=False)
+class VoxtralStreamingTextAdaRmsNorm(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        # TODO: how to add the intermediate size to the config? since it already the mistral one? new model? new config only?
+        self.linear1 = nn.Linear(config.hidden_size, 32, bias=False)
+        self.linear2 = nn.Linear(32, config.hidden_size, bias=False)
 
-#     def forward(self, hidden_states):
-#         hidden_states = self.linear1(hidden_states)
-#         hidden_states = nn.functional.gelu(hidden_states)
-#         hidden_states = self.linear2(hidden_states)
-#         return hidden_states
-
-
-# class MistralStreamingDecoderLayer(MistralDecoderLayer):
-#     def __init__(self, config: MistralConfig, layer_idx: int):
-#         super().__init__(config, layer_idx)
-#         self.ada_rms_norm = MistralStreamingAdaRmsNorm(config)
+    def forward(self, hidden_states):
+        hidden_states = self.linear1(hidden_states)
+        hidden_states = nn.functional.gelu(hidden_states)
+        hidden_states = self.linear2(hidden_states)
+        return hidden_states
 
 
-# class MistralStreamingForCausalLM(MistralForCausalLM): ...
+class VoxtralStreamingTextAttention(MistralAttention): ...
+
+
+class VoxtralStreamingTextMLP(MistralMLP): ...
+
+
+class VoxtralStreamingTextDecoderLayer(MistralDecoderLayer):
+    def __init__(self, config, layer_idx):
+        super().__init__(config, layer_idx)
+        self.ada_rms_norm = VoxtralStreamingTextAdaRmsNorm(config)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: torch.Tensor | None = None,
+        position_ids: torch.LongTensor | None = None,
+        past_key_values: Cache | None = None,
+        use_cache: bool | None = False,
+        cache_position: torch.LongTensor | None = None,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
+        t_cond: torch.Tensor | None = None,
+        **kwargs: Unpack[TransformersKwargs],
+    ) -> torch.Tensor:
+        residual = hidden_states
+        hidden_states = self.input_layernorm(hidden_states)
+        # Self Attention
+        hidden_states, _ = self.self_attn(
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            position_embeddings=position_embeddings,
+            **kwargs,
+        )
+        hidden_states = residual + hidden_states
+
+        # Fully Connected
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = hidden_states * (1 + self.ada_rms_norm(t_cond))
+
+        hidden_states = self.mlp(hidden_states)
+        hidden_states = residual + hidden_states
+        return hidden_states
+
+
+class VoxtralStreamingTextForCausalLM(MistralForCausalLM): ...
 
 
 class TimeEmbedding(nn.Module):
@@ -362,9 +405,6 @@ class TimeEmbedding(nn.Module):
         inv_freq = self.inv_freq.to(device=t.device, dtype=t.dtype)
         emb = t * inv_freq  # (B, 1) x (D/2,) -> (B, D/2) or (B, T, 1) x (D/2,) -> (B, T, D/2)
         return torch.cat((emb.cos(), emb.sin()), dim=-1)  # (B, D) or (B, T, D)
-
-
-# class VoxtralStreamingForConditionalGeneration(MistralForCausalLM):
 
 
 class VoxtralStreamingForConditionalGeneration(VoxtralForConditionalGeneration, GenerationMixin):
@@ -563,4 +603,5 @@ class VoxtralStreamingForConditionalGeneration(VoxtralForConditionalGeneration, 
 __all__ = [
     "VoxtralStreamingForConditionalGeneration",
     "VoxtralStreamingEncoder",
+    "VoxtralStreamingTextForCausalLM",
 ]
