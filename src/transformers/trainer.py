@@ -62,7 +62,12 @@ from .feature_extraction_sequence_utils import SequenceFeatureExtractor
 from .feature_extraction_utils import FeatureExtractionMixin
 from .hyperparameter_search import ALL_HYPERPARAMETER_SEARCH_BACKENDS, default_hp_search_backend
 from .image_processing_utils import BaseImageProcessor
-from .integrations.deepspeed import deepspeed_init, deepspeed_load_checkpoint, is_deepspeed_available
+from .integrations.deepspeed import (
+    deepspeed_init,
+    deepspeed_load_checkpoint,
+    is_deepspeed_available,
+    propagate_args_to_deepspeed,
+)
 from .integrations.peft import MIN_PEFT_VERSION
 from .integrations.tpu import tpu_spmd_dataloader
 from .modelcard import TrainingSummary
@@ -2219,7 +2224,7 @@ class Trainer:
                     # Temporarily unset `self.args.train_batch_size`
                     original_bs = self.args.per_device_train_batch_size
                     self.args.per_device_train_batch_size = self._train_batch_size // max(1, self.args.n_gpu)
-                    self.propagate_args_to_deepspeed(True)
+                    propagate_args_to_deepspeed(self.accelerator, self.args, auto_find_batch_size=True)
                     self.args.per_device_train_batch_size = original_bs
             self.state.train_batch_size = self._train_batch_size
         logger.debug(f"Currently training with a batch size of: {self._train_batch_size}")
@@ -5087,7 +5092,7 @@ class Trainer:
                 )
 
         if self.is_deepspeed_enabled and getattr(self.args, "hf_deepspeed_config", None) is None:
-            self.propagate_args_to_deepspeed()
+            propagate_args_to_deepspeed(self.accelerator, self.args)
 
         # `save_only_model` can't be used with DeepSpeed/FSDP along with `load_best_model_at_end`
         if (
@@ -5113,18 +5118,6 @@ class Trainer:
             and "SHARDED_STATE_DICT" in str(self.accelerator.state.fsdp_plugin.state_dict_type)
         ):
             raise ValueError("save_only_model option is not compatible with FSDP state dict type 'SHARDED_STATE_DICT'")
-
-    def propagate_args_to_deepspeed(self, auto_find_batch_size=False):
-        """
-        Sets values in the deepspeed plugin based on the Trainer args
-        """
-        from transformers.integrations.deepspeed import HfTrainerDeepSpeedConfig
-
-        ds_plugin = self.accelerator.state.deepspeed_plugin
-
-        ds_plugin.hf_ds_config = HfTrainerDeepSpeedConfig(ds_plugin.hf_ds_config.config)
-        ds_plugin.deepspeed_config = ds_plugin.hf_ds_config.config
-        ds_plugin.hf_ds_config.trainer_config_process(self.args, auto_find_batch_size)
 
     def _fsdp_qlora_plugin_updates(self):
         if self.is_fsdp_enabled and _is_peft_model(self.model):
