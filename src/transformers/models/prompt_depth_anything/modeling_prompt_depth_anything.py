@@ -20,14 +20,11 @@
 import torch
 import torch.nn as nn
 
-from transformers.utils.generic import torch_int
-
+from ...backbone_utils import load_backbone
 from ...modeling_outputs import DepthEstimatorOutput
 from ...modeling_utils import PreTrainedModel
-from ...processing_utils import Unpack
-from ...utils import TransformersKwargs, auto_docstring, can_return_tuple
-from ...utils.backbone_utils import load_backbone
-from ...utils.generic import check_model_inputs
+from ...utils import auto_docstring
+from ...utils.generic import torch_int
 from .configuration_prompt_depth_anything import PromptDepthAnythingConfig
 
 
