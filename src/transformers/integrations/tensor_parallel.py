@@ -734,11 +734,6 @@ class AllReduce(TensorParallelLayer):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    @staticmethod
-    def _prepare_input_fn(mod, inputs, device_mesh):
-        mod.num_experts = 1+ (mod.num_experts // device_mesh.size())
-        return inputs
-
     def _prepare_output_fn(self, mod, outputs, device_mesh):
         return all_reduce_forward(outputs, device_mesh)
 
@@ -945,12 +940,6 @@ class GroupedGemmParallel(TensorParallelLayer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
-
-    @staticmethod
-    def _prepare_input_fn(mod, inputs, device_mesh):
-        mod.num_experts = 1 + (mod.num_experts // device_mesh.size())
-        return inputs
 
     def shard_tensor(
         self, param: torch.Tensor, tensor_idx: int | None = None, device=None, dtype=None
