@@ -637,7 +637,7 @@ class WeightTransform:
             tensors = self.collected_tensors.pop(key)
             # Async loading
             if isinstance(tensors[0], Future):
-                tensors = [future.result() for future in tensors]
+                tensors = [future.result() for future in tensors if future.result() is not None]
             # Sync loading
             elif callable(tensors[0]):
                 tensors = [func() for func in tensors]
@@ -1152,7 +1152,7 @@ def convert_and_load_state_dict_in_model(
                         mapping.distributed_operation = tp_layer(
                             device_mesh=device_mesh, rank=device_mesh.get_local_rank(), empty_param=empty_param.clone()
                         )
-                    shard_index = len(mapping.collected_tensors.get(source_pattern, []))
+                    shard_index = len(mapping.collected_tensors.get(source_pattern, [])) if isinstance(mapping, WeightConverter) else None
                     future_or_tensor = spawn_tp_materialize(
                         thread_pool,
                         tensor,

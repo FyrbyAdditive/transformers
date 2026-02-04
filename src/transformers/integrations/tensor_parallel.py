@@ -960,8 +960,10 @@ class GroupedGemmParallel(TensorParallelLayer):
         if tensor_idx is not None and start <= tensor_idx < end:
             # this tensor does need to be materialized on this device:
             return param[:].to(device=device)
+        elif tensor_idx is None: # a bias or a weight, but already merged
+            return param[start:end].to(device=device, dtype=dtype)
         elif len(shape) >=1 and tensor_idx is not None:
-            return torch.empty([], dtype=dtype, device=device)
+            return None
         else: # bias case
             return param[:].to(device=device, dtype=dtype)
 
