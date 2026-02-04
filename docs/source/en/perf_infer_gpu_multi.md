@@ -115,7 +115,7 @@ class ParallelInterface(MutableMapping):
         "local_colwise": ColwiseParallel(use_dtensor=False),
         "local_rowwise": RowwiseParallel(use_dtensor=False),
         "local": IsolatedParallel(),
-        "gather": GatherParallel(),
+        "all_reduce": GatherParallel(),
         "local_packed_rowwise": PackedRowwiseParallel(use_dtensor=False),
         "sequence_parallel": SequenceParallel(),
         "replicate": ReplicateParallel(),
