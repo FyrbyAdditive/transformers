@@ -438,9 +438,7 @@ class Trainer:
                 raise RuntimeError("`Trainer` requires either a `model` or `model_init` argument")
         else:
             if model_init is not None:
-                raise ValueError(
-                    "`Trainer` requires either a `model` or `model_init` argument, but not both."
-                )
+                raise ValueError("`Trainer` requires either a `model` or `model_init` argument, but not both.")
             self.model_init = model_init
 
         if model.__class__.__name__ in MODEL_MAPPING_NAMES:
