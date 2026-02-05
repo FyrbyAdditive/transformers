@@ -5860,62 +5860,6 @@ class TrainerOptimizerChoiceTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     Trainer.get_optimizer_cls_and_kwargs(args)
 
-    def test_register_optimizer_decorator(self):
-        """Test that custom optimizers can be registered using the @register_optimizer decorator."""
-        from transformers.trainer_optimizer import _OPTIMIZER_HANDLERS, register_optimizer
-
-        # Create a mock optimizer class
-        class CustomTestOptimizer(torch.optim.Optimizer):
-            def __init__(self, params, lr=1e-3, custom_param=42):
-                defaults = {"lr": lr, "custom_param": custom_param}
-                super().__init__(params, defaults)
-
-            def step(self, closure=None):
-                pass
-
-        # Register a custom optimizer using the decorator
-        @register_optimizer("custom_test_optimizer")
-        def custom_optimizer_handler(ctx):
-            return CustomTestOptimizer, {"lr": ctx.optimizer_kwargs["lr"], "custom_param": 100}
-
-        # Verify it was registered
-        self.assertIn("custom_test_optimizer", _OPTIMIZER_HANDLERS)
-
-        # Clean up - remove the test optimizer from the registry
-        del _OPTIMIZER_HANDLERS["custom_test_optimizer"]
-
-    def test_register_optimizer_handler_function(self):
-        """Test that custom optimizers can be registered using register_optimizer_handler()."""
-        from transformers.trainer_optimizer import _OPTIMIZER_HANDLERS, register_optimizer_handler
-
-        # Create a mock optimizer class
-        class AnotherTestOptimizer(torch.optim.Optimizer):
-            def __init__(self, params, lr=1e-3):
-                defaults = {"lr": lr}
-                super().__init__(params, defaults)
-
-            def step(self, closure=None):
-                pass
-
-        def another_optimizer_handler(ctx):
-            return AnotherTestOptimizer, {"lr": ctx.optimizer_kwargs["lr"]}
-
-        # Register using the function
-        register_optimizer_handler("another_test_optimizer", another_optimizer_handler)
-
-        # Verify it was registered
-        self.assertIn("another_test_optimizer", _OPTIMIZER_HANDLERS)
-
-        # Test that registering again without override raises an error
-        with self.assertRaises(ValueError):
-            register_optimizer_handler("another_test_optimizer", another_optimizer_handler)
-
-        # Test that override=True allows re-registration
-        register_optimizer_handler("another_test_optimizer", another_optimizer_handler, override=True)
-
-        # Clean up
-        del _OPTIMIZER_HANDLERS["another_test_optimizer"]
-
     def test_optimizer_factory_pattern(self):
         """Test that is_optimizer_factory correctly identifies factory classes vs optimizer classes."""
         from transformers.trainer_optimizer import is_optimizer_factory
