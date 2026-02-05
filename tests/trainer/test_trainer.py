@@ -5916,6 +5916,29 @@ class TrainerOptimizerChoiceTest(unittest.TestCase):
         # Clean up
         del _OPTIMIZER_HANDLERS["another_test_optimizer"]
 
+    def test_optimizer_factory_pattern(self):
+        """Test that is_optimizer_factory correctly identifies factory classes vs optimizer classes."""
+        from transformers.trainer_optimizer import is_optimizer_factory
+
+        # Create a mock optimizer class
+        class MockComplexOptimizer(torch.optim.Optimizer):
+            def __init__(self, params, lr=1e-3):
+                defaults = {"lr": lr}
+                super().__init__(params, defaults)
+
+            def step(self, closure=None):
+                pass
+
+        # Create a factory class (simulates Muon/Dion pattern)
+        class MockOptimizerFactory:
+            def __call__(self, opt_model, **optimizer_kwargs):
+                all_params = list(opt_model.parameters())
+                return MockComplexOptimizer(all_params, **optimizer_kwargs)
+
+        # Verify is_optimizer_factory correctly identifies factories vs optimizer classes
+        self.assertFalse(is_optimizer_factory(MockComplexOptimizer))  # Optimizer class should return False
+        self.assertTrue(is_optimizer_factory(MockOptimizerFactory))  # Factory class should return True
+
 
 @require_torch
 @require_wandb
