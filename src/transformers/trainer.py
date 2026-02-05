@@ -3861,8 +3861,7 @@ class Trainer:
         # process index.
         if is_sagemaker_mp_enabled():
             return smp.rank() == 0
-        else:
-            return self.args.process_index == 0
+        return self.args.process_index == 0
 
     def save_model(self, output_dir: str | None = None, _internal_call: bool = False):
         """
