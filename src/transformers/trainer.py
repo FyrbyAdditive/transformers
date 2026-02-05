@@ -33,7 +33,7 @@ import warnings
 from collections.abc import Callable, Iterator, Mapping
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any
 
 
 # Integrations must be imported before ML frameworks:
@@ -284,7 +284,7 @@ class Trainer:
             The function to use to form a batch from a list of elements of `train_dataset` or `eval_dataset`. Will
             default to [`default_data_collator`] if no `processing_class` is provided, an instance of
             [`DataCollatorWithPadding`] otherwise if the processing_class is a feature extractor or tokenizer.
-        train_dataset (Union[`torch.utils.data.Dataset`, `torch.utils.data.IterableDataset`, `datasets.Dataset`], *optional*):
+        train_dataset (`torch.utils.data.Dataset` | `torch.utils.data.IterableDataset` | `datasets.Dataset`, *optional*):
             The dataset to use for training. If it is a [`~datasets.Dataset`], columns not accepted by the
             `model.forward()` method are automatically removed.
 
@@ -293,7 +293,7 @@ class Trainer:
             `torch.Generator` for the randomization that must be identical on all processes (and the Trainer will
             manually set the seed of this `generator` at each epoch) or have a `set_epoch()` method that internally
             sets the seed of the RNGs used.
-        eval_dataset (Union[`torch.utils.data.Dataset`, dict[str, `torch.utils.data.Dataset`], `datasets.Dataset`]), *optional*):
+        eval_dataset (`torch.utils.data.Dataset` | dict[str, `torch.utils.data.Dataset`] | `datasets.Dataset`, *optional*):
              The dataset to use for evaluation. If it is a [`~datasets.Dataset`], columns not accepted by the
              `model.forward()` method are automatically removed. If it is a dictionary, it will evaluate on each
              dataset prepending the dictionary key to the metric name.
@@ -371,8 +371,8 @@ class Trainer:
         model: PreTrainedModel | nn.Module | None = None,
         args: TrainingArguments | None = None,
         data_collator: DataCollator | None = None,
-        train_dataset: Union[Dataset, IterableDataset, "datasets.Dataset"] | None = None,
-        eval_dataset: Union[Dataset, dict[str, Dataset], "datasets.Dataset"] | None = None,
+        train_dataset: Dataset | IterableDataset | "datasets.Dataset" | None = None,
+        eval_dataset: Dataset | dict[str, Dataset] | "datasets.Dataset" | None = None,
         processing_class: PreTrainedTokenizerBase
         | BaseImageProcessor
         | FeatureExtractionMixin
@@ -1741,7 +1741,7 @@ class Trainer:
         except (NameError, AttributeError, TypeError):  # no dataset or length, estimate by length of dataloader
             return len(dataloader) * self.args.per_device_train_batch_size
 
-    def _hp_search_setup(self, trial: Union["optuna.Trial", dict[str, Any]]):
+    def _hp_search_setup(self, trial: "optuna.Trial" | dict[str, Any]):
         """HP search setup code"""
         self._trial = trial
 
@@ -1793,7 +1793,7 @@ class Trainer:
 
         self.create_accelerator_and_postprocess()
 
-    def _report_to_hp_search(self, trial: Union["optuna.Trial", dict[str, Any]], step: int, metrics: dict[str, float]):
+    def _report_to_hp_search(self, trial: "optuna.Trial" | dict[str, Any], step: int, metrics: dict[str, float]):
         if self.hp_search_backend is None or trial is None:
             return
         metrics = metrics.copy()
@@ -1986,7 +1986,7 @@ class Trainer:
     def train(
         self,
         resume_from_checkpoint: str | bool | None = None,
-        trial: Union["optuna.Trial", dict[str, Any], None] = None,
+        trial: "optuna.Trial" | dict[str, Any] | None = None,
         ignore_keys_for_eval: list[str] | None = None,
     ):
         """
@@ -3398,7 +3398,7 @@ class Trainer:
         compute_objective: Callable[[dict[str, float]], float] | None = None,
         n_trials: int = 20,
         direction: str | list[str] = "minimize",
-        backend: Union["str", HPSearchBackend] | None = None,
+        backend: str | HPSearchBackend | None = None,
         hp_name: Callable[["optuna.Trial"], str] | None = None,
         **kwargs,
     ) -> BestRun | list[BestRun]:
@@ -3656,7 +3656,7 @@ class Trainer:
         Args:
             model (`nn.Module`):
                 The model to train.
-            inputs (`dict[str, Union[torch.Tensor, Any]]`):
+            inputs (`dict[str, torch.Tensor | Any]`):
                 The inputs and targets of the model.
 
                 The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
@@ -3726,7 +3726,7 @@ class Trainer:
         Args:
             model (`nn.Module`):
                 The model to compute the loss for.
-            inputs (`dict[str, Union[torch.Tensor, Any]]`):
+            inputs (`dict[str, torch.Tensor | Any]`):
                 The input data for the model.
             return_outputs (`bool`, *optional*, defaults to `False`):
                 Whether to return the model outputs along with the loss.
@@ -3805,7 +3805,7 @@ class Trainer:
         Args:
             model (`nn.Module`):
                 The model to compute the loss for.
-            inputs (`dict[str, Union[torch.Tensor, Any]]`):
+            inputs (`dict[str, torch.Tensor | Any]`):
                 The input data for the model. Must include "shift_labels" key.
             return_outputs (`bool`, *optional*, defaults to `False`):
                 Whether to return the model outputs along with the loss.
@@ -4108,7 +4108,7 @@ class Trainer:
         You can also subclass and override this method to inject custom behavior.
 
         Args:
-            eval_dataset (Union[`Dataset`, dict[str, `Dataset`]], *optional*):
+            eval_dataset (`Dataset` | dict[str, `Dataset`], *optional*):
                 Pass a dataset if you wish to override `self.eval_dataset`. If it is a [`~datasets.Dataset`], columns
                 not accepted by the `model.forward()` method are automatically removed. If it is a dictionary, it will
                 evaluate on each dataset, prepending the dictionary key to the metric name. Datasets must implement the
@@ -4478,7 +4478,7 @@ class Trainer:
         Args:
             model (`nn.Module`):
                 The model to evaluate.
-            inputs (`dict[str, Union[torch.Tensor, Any]]`):
+            inputs (`dict[str, torch.Tensor | Any]`):
                 The inputs and targets of the model.
 
                 The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
@@ -4575,7 +4575,7 @@ class Trainer:
         model or subclass and override this method.
 
         Args:
-            inputs (`dict[str, Union[torch.Tensor, Any]]`):
+            inputs (`dict[str, torch.Tensor | Any]`):
                 The inputs and targets of the model.
 
         Returns:
