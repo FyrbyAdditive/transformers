@@ -317,7 +317,9 @@ def repack_weights(
     return final_ordered_tensor
 
 
-def get_tensor_shard(param, empty_param, device_mesh, rank, dim, tensor_idx: int | None = None, expected_shape: list[int] | None = None):
+def get_tensor_shard(
+    param, empty_param, device_mesh, rank, dim, tensor_idx: int | None = None
+):
     """
     Generalized tensor sharding across a multi-dimensional device mesh.
     Extract only the fraction of the parameter owned by the given `rank` when the parameter would have gone sharding at provided `dim`.
@@ -368,28 +370,22 @@ def get_tensor_shard(param, empty_param, device_mesh, rank, dim, tensor_idx: int
         device_mesh (torch.Tensor): Shape [d_0, ..., d_n] representing the mesh.
         rank (int): Global rank of the current process/device.
         dim (int): Dimension along which to shard the tensor.
-        expected_shape (list[int] | None): The expected shape of the tensor after sharding.
     """
     param_dim = empty_param.ndim
-    # Flatten the mesh to get the total number of devices
     mesh_shape = device_mesh.shape
     world_size = reduce(operator.mul, mesh_shape)
     # Get param shape: works for both torch.Tensor and safetensors TensorInfo
     param_shape = list(param.shape) if isinstance(param, torch.Tensor) else param.get_shape()
-    if expected_shape is None:
-        expected_shape = empty_param.shape
     if dim < 0:
         dim = param_dim + dim
     if empty_param.dim() == 3 and dim == 1 and len(param_shape) == 2:
         dim = 0
-        expected_shape = expected_shape[1:]
     elif empty_param.dim() == 3 and dim == 2 and len(param_shape) == 2:
-        dim = 0
-        expected_shape = expected_shape[1:]
+        dim = 1
 
-    shard_size = math.ceil(expected_shape[dim] / world_size)
+    shard_size = math.ceil(param_shape[dim] / world_size)
     start = rank * shard_size
-    end = min(start + shard_size, expected_shape[dim])
+    end = min(start + shard_size, param_shape[dim])
 
     if dim >= param_dim:
         raise ValueError(f"dim {dim} is out of bounds for tensor of dimension {param_dim}")
@@ -712,9 +708,9 @@ class ColwiseParallel(TensorParallelLayer):
         # If only 1 dim, shard this one (usually it's a `bias`)
         dim = param.dim() if isinstance(param, torch.Tensor) else len(param.get_shape())
         if dim == 1:
-            parameter = get_tensor_shard(param, self.empty_param, self.device_mesh, self.rank, -1, tensor_idx)
+            parameter = get_tensor_shard(param, self.empty_param, self.device_mesh, self.rank, -1)
         else:
-            parameter = get_tensor_shard(param, self.empty_param, self.device_mesh, self.rank, -2, tensor_idx)
+            parameter = get_tensor_shard(param, self.empty_param, self.device_mesh, self.rank, -2)
         return parameter.to(device=device, dtype=dtype)
 
     def get_expected_sharded_shape(self, full_shape: tuple[int, ...] | torch.Size) -> tuple[int, ...]:
@@ -792,9 +788,7 @@ class RowwiseParallel(TensorParallelLayer):
         if dim == 1:
             parameter = param[...]
         else:
-            parameter = get_tensor_shard(
-                param, self.empty_param, self.device_mesh, self.rank, -1
-            )
+            parameter = get_tensor_shard(param, self.empty_param, self.device_mesh, self.rank, -1)
         return parameter.to(device=device, dtype=dtype)
 
     def get_expected_sharded_shape(self, full_shape: tuple[int, ...] | torch.Size) -> tuple[int, ...]:
@@ -827,7 +821,9 @@ class PackedColwiseParallel(ColwiseParallel):
             if dim < len(expected_shape):
                 # Input is unpacked (e.g., gate_proj that will be concatenated to gate_up_proj)
                 # Use regular tensor shard - concatenation will happen after
-                parameter = get_tensor_shard(param, self.empty_param, self.device_mesh, self.rank, -2, expected_shape=expected_shape)
+                parameter = get_tensor_shard(
+                    param, self.empty_param, self.device_mesh, self.rank, -2
+                )
             else:
                 # Input is already packed, use packed sharding
                 parameter = get_packed_weights(param, self.empty_param, self.device_mesh, self.rank, -2)
@@ -853,7 +849,7 @@ class PackedRowwiseParallel(RowwiseParallel):
 
             if actual_dim < expected_packed_dim:
                 # Input is unpacked, use regular tensor shard
-                parameter = get_tensor_shard(param, self.empty_param, self.device_mesh, self.rank, -1, tensor_idx)
+                parameter = get_tensor_shard(param, self.empty_param, self.device_mesh, self.rank, -1)
             else:
                 # Input is already packed, use packed sharding
                 parameter = get_packed_weights(param, self.empty_param, self.device_mesh, self.rank, -1)
@@ -910,9 +906,7 @@ class EmbeddingParallel(TensorParallelLayer):
         # If only 1 dim, shard this one (usually it's a `bias`)
         dim = param.dim() if isinstance(param, torch.Tensor) else len(param.get_shape())
         if dim == 1:
-            parameter = get_tensor_shard(
-                param, self.empty_param, self.device_mesh, self.rank, -1, tensor_idx=tensor_idx
-            )
+            parameter = get_tensor_shard(param, self.empty_param, self.device_mesh, self.rank, -1)
         else:
             parameter = get_tensor_shard(
                 param,
@@ -920,7 +914,6 @@ class EmbeddingParallel(TensorParallelLayer):
                 self.device_mesh,
                 self.rank,
                 self.embedding_dim_sharding,
-                tensor_idx=tensor_idx,
             )
         return parameter.to(device=device, dtype=dtype)
 
