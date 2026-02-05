@@ -829,6 +829,10 @@ def metrics_format(metrics: dict[str, float]) -> dict[str, float]:
     return metrics_copy
 
 
+# The following functions are used as methods of the Trainer class (indexes with `self`)
+# and are imported in the Trainer class definition to be used as methods.
+
+
 def log_metrics(self, split, metrics):
     """
     Log metrics in a specially formatted way.
@@ -968,6 +972,39 @@ def save_state(self):
 
     path = os.path.join(self.args.output_dir, "trainer_state.json")
     self.state.save_to_json(path)
+
+
+def get_num_trainable_parameters(self) -> int:
+    """
+    Get the number of trainable parameters.
+    """
+    return sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+
+
+def get_learning_rates(self) -> list[float]:
+    """
+    Returns the learning rate of each parameter from self.optimizer.
+    """
+    if self.optimizer is None:
+        raise ValueError("Trainer optimizer is None, please make sure you have setup the optimizer before.")
+    return [group["lr"] for group in self.optimizer.param_groups]
+
+
+def get_optimizer_group(self, param: str | torch.nn.parameter.Parameter | None = None):
+    """
+    Returns optimizer group for a parameter if given, else returns all optimizer groups for params.
+
+    Args:
+        param (`str` or `torch.nn.parameter.Parameter`, *optional*):
+            The parameter for which optimizer group needs to be returned.
+    """
+    if self.optimizer is None:
+        raise ValueError("Trainer optimizer is None, please make sure you have setup the optimizer before.")
+    if param is not None:
+        for group in self.optimizer.param_groups:
+            if param in group["params"]:
+                return group
+    return [group["params"] for group in self.optimizer.param_groups]
 
 
 def get_model_param_count(model, trainable_only=False):
