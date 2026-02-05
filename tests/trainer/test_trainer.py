@@ -5617,20 +5617,25 @@ if is_torch_available():
     }
 
     # Bitsandbytes optimizer test parameters: (optim_name, mock_attr, expected_kwargs)
-    _BNB_OPTIMIZER_PARAMS = [
-        (OptimizerNames.ADAMW_BNB, "AdamW", default_adam_kwargs),
-        (OptimizerNames.ADAMW_8BIT, "AdamW", default_adam_kwargs),
-        (OptimizerNames.PAGED_ADAMW, "AdamW", default_adam_kwargs),
-        (OptimizerNames.PAGED_ADAMW_8BIT, "AdamW", default_adam_kwargs),
-        (OptimizerNames.LION, "Lion", default_lion_kwargs),
-        (OptimizerNames.LION_8BIT, "Lion", default_lion_kwargs),
-        (OptimizerNames.PAGED_LION, "Lion", default_lion_kwargs),
-        (OptimizerNames.PAGED_LION_8BIT, "Lion", default_lion_kwargs),
-        (OptimizerNames.ADEMAMIX, "AdEMAMix", default_ademamix_kwargs),
-        (OptimizerNames.ADEMAMIX_8BIT, "AdEMAMix", default_ademamix_kwargs),
-        (OptimizerNames.PAGED_ADEMAMIX, "AdEMAMix", default_ademamix_kwargs),
-        (OptimizerNames.PAGED_ADEMAMIX_8BIT, "AdEMAMix", default_ademamix_kwargs),
-    ]
+    # Empty list when bitsandbytes is not available triggers skip_on_empty=True
+    _BNB_OPTIMIZER_PARAMS = (
+        [
+            (OptimizerNames.ADAMW_BNB, "AdamW", default_adam_kwargs),
+            (OptimizerNames.ADAMW_8BIT, "AdamW", default_adam_kwargs),
+            (OptimizerNames.PAGED_ADAMW, "AdamW", default_adam_kwargs),
+            (OptimizerNames.PAGED_ADAMW_8BIT, "AdamW", default_adam_kwargs),
+            (OptimizerNames.LION, "Lion", default_lion_kwargs),
+            (OptimizerNames.LION_8BIT, "Lion", default_lion_kwargs),
+            (OptimizerNames.PAGED_LION, "Lion", default_lion_kwargs),
+            (OptimizerNames.PAGED_LION_8BIT, "Lion", default_lion_kwargs),
+            (OptimizerNames.ADEMAMIX, "AdEMAMix", default_ademamix_kwargs),
+            (OptimizerNames.ADEMAMIX_8BIT, "AdEMAMix", default_ademamix_kwargs),
+            (OptimizerNames.PAGED_ADEMAMIX, "AdEMAMix", default_ademamix_kwargs),
+            (OptimizerNames.PAGED_ADEMAMIX_8BIT, "AdEMAMix", default_ademamix_kwargs),
+        ]
+        if is_bitsandbytes_available()
+        else []
+    )
     _ALL_BNB_OPTIMIZERS = [p[0] for p in _BNB_OPTIMIZER_PARAMS]
 
     optim_test_params = [
@@ -5817,7 +5822,6 @@ class TrainerOptimizerChoiceTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     Trainer.get_optimizer_cls_and_kwargs(args)
 
-    @require_bitsandbytes
     @parameterized.expand(_BNB_OPTIMIZER_PARAMS, skip_on_empty=True)
     def test_bnb_optimizer(self, optim_name, mock_attr, expected_kwargs):
         mock = Mock()
