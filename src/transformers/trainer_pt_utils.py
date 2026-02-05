@@ -829,10 +829,7 @@ def metrics_format(metrics: dict[str, float]) -> dict[str, float]:
     return metrics_copy
 
 
-# The following functions are used as methods of the Trainer class (indexes with `self`)
-# and are imported in the Trainer class definition to be used as methods.
-
-
+# Trainer helper method: imported into the Trainer class and used as a method (takes `self` as first argument).
 def log_metrics(self, split, metrics):
     """
     Log metrics in a specially formatted way.
@@ -923,6 +920,7 @@ def log_metrics(self, split, metrics):
         print(f"  {key: <{k_width}} = {metrics_formatted[key]:>{v_width}}")
 
 
+# Trainer helper method
 def save_metrics(self, split, metrics, combined=True):
     """
     Save metrics into a json file for that split, e.g. `train_results.json`.
@@ -961,6 +959,7 @@ def save_metrics(self, split, metrics, combined=True):
             json.dump(all_metrics, f, indent=4, sort_keys=True)
 
 
+# Trainer helper method
 def save_state(self):
     """
     Saves the Trainer state, since Trainer.save_model saves only the tokenizer with the model.
@@ -974,6 +973,7 @@ def save_state(self):
     self.state.save_to_json(path)
 
 
+# Trainer helper method
 def get_num_trainable_parameters(self) -> int:
     """
     Get the number of trainable parameters.
@@ -981,6 +981,7 @@ def get_num_trainable_parameters(self) -> int:
     return sum(p.numel() for p in self.model.parameters() if p.requires_grad)
 
 
+# Trainer helper method
 def get_learning_rates(self) -> list[float]:
     """
     Returns the learning rate of each parameter from self.optimizer.
@@ -990,6 +991,7 @@ def get_learning_rates(self) -> list[float]:
     return [group["lr"] for group in self.optimizer.param_groups]
 
 
+# Trainer helper method
 def get_optimizer_group(self, param: str | torch.nn.parameter.Parameter | None = None):
     """
     Returns optimizer group for a parameter if given, else returns all optimizer groups for params.
