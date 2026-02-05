@@ -215,4 +215,4 @@ class VoxtralRealtimeConfig(PreTrainedConfig):
         super().__init__(**kwargs)
 
 
-__all__ = ["VoxtralRealtimeEncoderConfig", "VoxtralRealtimeConfig", "VoxtralRealtimeTextConfig"]s
+__all__ = ["VoxtralRealtimeEncoderConfig", "VoxtralRealtimeConfig", "VoxtralRealtimeTextConfig"]
