@@ -83,7 +83,11 @@ from .trainer_callback import (
     TrainerControl,
     TrainerState,
 )
-from .trainer_optimizer import _OPTIMIZER_HANDLERS, OptimizerContext, _parse_optim_args
+from .trainer_optimizer import (
+    _OPTIMIZER_HANDLERS,
+    OptimizerContext,
+    _parse_optim_args,
+)
 from .trainer_pt_utils import (
     EvalLoopContainer,
     IterableDatasetShard,

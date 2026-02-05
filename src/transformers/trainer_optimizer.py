@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import importlib.metadata
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import wraps
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -70,6 +72,85 @@ def _parse_optim_args(optim_args_str: str | None) -> dict[str, str]:
         key, value = mapping.split("=")
         optim_args[key] = value
     return optim_args
+
+
+# Type alias for optimizer handler functions
+OptimizerHandler = Callable[[OptimizerContext], tuple[Any, dict[str, Any]]]
+
+
+def register_optimizer_handler(
+    name: str | OptimizerNames,
+    handler: OptimizerHandler,
+    *,
+    override: bool = False,
+) -> None:
+    """
+    Register a custom optimizer handler.
+
+    Args:
+        name (`str` or `OptimizerNames`):
+            The optimizer name to register. Can be an existing `OptimizerNames` value or a custom string.
+        handler (`Callable[[OptimizerContext], tuple[Any, dict[str, Any]]]`):
+            A function that takes an `OptimizerContext` and returns a tuple of (optimizer_class, optimizer_kwargs).
+        override (`bool`, *optional*, defaults to `False`):
+            Whether to override an existing handler. If `False` and the name is already registered, raises a `ValueError`.
+
+    Example:
+        ```python
+        from transformers.trainer_optimizer import register_optimizer_handler, OptimizerContext
+
+        def my_optimizer_handler(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
+            from my_lib import MyOptimizer
+            return MyOptimizer, {"lr": ctx.optimizer_kwargs["lr"], **ctx.adam_kwargs}
+
+        register_optimizer_handler("my_optimizer", my_optimizer_handler)
+        ```
+    """
+    name_str = str(name.value) if isinstance(name, OptimizerNames) else str(name)
+
+    if not override and name_str in _OPTIMIZER_HANDLERS:
+        raise ValueError(
+            f"Optimizer handler for '{name_str}' is already registered. Use `override=True` to replace it."
+        )
+
+    _OPTIMIZER_HANDLERS[name_str] = handler
+
+
+def register_optimizer(
+    name: str | OptimizerNames,
+    *,
+    override: bool = False,
+) -> Callable[[OptimizerHandler], OptimizerHandler]:
+    """
+    Decorator to register an optimizer handler.
+
+    Args:
+        name (`str` or `OptimizerNames`):
+            The optimizer name to register.
+        override (`bool`, *optional*, defaults to `False`):
+            Whether to override an existing handler.
+
+    Example:
+        ```python
+        from transformers.trainer_optimizer import register_optimizer, OptimizerContext
+
+        @register_optimizer("my_optimizer")
+        def my_optimizer_handler(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
+            from my_lib import MyOptimizer
+            return MyOptimizer, {"lr": ctx.optimizer_kwargs["lr"]}
+        ```
+    """
+
+    def decorator(handler: OptimizerHandler) -> OptimizerHandler:
+        register_optimizer_handler(name, handler, override=override)
+
+        @wraps(handler)
+        def wrapper(ctx: OptimizerContext) -> tuple[Any, dict[str, Any]]:
+            return handler(ctx)
+
+        return wrapper
+
+    return decorator
 
 
 def _setup_low_rank_optimizer(
@@ -555,7 +636,12 @@ _SCHEDULE_FREE_OPTIMIZERS = [
     OptimizerNames.SCHEDULE_FREE_SGD,
 ]
 
-_OPTIMIZER_HANDLERS = {
+# =============================================================================
+# Built-in optimizer handlers registry
+# Use register_optimizer_handler() or @register_optimizer decorator to add custom optimizers
+# =============================================================================
+
+_OPTIMIZER_HANDLERS: dict[str, OptimizerHandler] = {
     OptimizerNames.ADAFACTOR: _get_adafactor,
     OptimizerNames.ADAMW_TORCH: _get_adamw_torch,
     OptimizerNames.ADAMW_TORCH_FUSED: _get_adamw_torch,
