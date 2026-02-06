@@ -478,7 +478,7 @@ class Trainer:
         if (
             self.is_model_parallel
             or self.is_deepspeed_enabled
-            or ((args.fp16_full_eval or args.bf16_full_eval) and not args.do_train)
+            or (args.fp16_full_eval or args.bf16_full_eval)
             or self.is_fsdp_xla_enabled
             or self.is_fsdp_enabled
         ):
@@ -2012,14 +2012,9 @@ class Trainer:
         if self.neftune_noise_alpha is not None:
             self.neftune_hook_handle = activate_neftune(self.model, self.neftune_noise_alpha, self.accelerator)
 
-        # do_train is not a reliable argument, as it might not be set and .train() still called, so
-        # the following is a workaround:
-        if (
-            (args.fp16_full_eval or args.bf16_full_eval)
-            and not args.do_train
-            and not self.is_model_parallel
-            and self.model_init is None
-        ):
+        # When fp16/bf16 full eval is enabled, __init__ skips device placement so that
+        # evaluation_loop can cast dtype and move in one step. Move the model now for training.
+        if (args.fp16_full_eval or args.bf16_full_eval) and not self.is_model_parallel and self.model_init is None:
             self._move_model_to_device(self.model, args.device)
 
         # This might change the seed so needs to run first.
