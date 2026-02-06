@@ -1512,7 +1512,7 @@ class TrainingArguments:
             self.report_to = [self.report_to]
 
         # ── 4. Validation ──
-        self._validate()
+        self._validate_args()
 
         # ── 5. Mixed Precision ──
         # Read from env first; DeepSpeed may override this later
@@ -1615,7 +1615,7 @@ class TrainingArguments:
             self.deepspeed_plugin.set_mixed_precision(self.mixed_precision)
             self.deepspeed_plugin.set_deepspeed_weakref()
 
-    def _validate(self):
+    def _validate_args(self):
         """Validate argument combinations and value constraints."""
         if self.torch_empty_cache_steps is not None:
             if not (isinstance(self.torch_empty_cache_steps, int) and self.torch_empty_cache_steps > 0):
