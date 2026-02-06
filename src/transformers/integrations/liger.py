@@ -18,6 +18,7 @@ See https://github.com/linkedin/Liger-Kernel for details.
 """
 
 from ..modeling_utils import PreTrainedModel
+from ..trainer_utils import unwrap_peft_model
 from ..utils import is_liger_kernel_available, logging
 
 
@@ -44,10 +45,9 @@ def apply_liger_kernel(model, args):
     from liger_kernel.transformers import _apply_liger_kernel_to_instance
 
     kernel_config = args.liger_kernel_config if args.liger_kernel_config is not None else {}
+    base_model = unwrap_peft_model(model)
 
-    if isinstance(model, PreTrainedModel):
-        _apply_liger_kernel_to_instance(model=model, **kernel_config)
-    elif hasattr(model, "get_base_model") and isinstance(model.get_base_model(), PreTrainedModel):
-        _apply_liger_kernel_to_instance(model=model.get_base_model(), **kernel_config)
+    if isinstance(base_model, PreTrainedModel):
+        _apply_liger_kernel_to_instance(model=base_model, **kernel_config)
     else:
         logger.warning("The model is not an instance of PreTrainedModel. No liger kernels will be applied.")
