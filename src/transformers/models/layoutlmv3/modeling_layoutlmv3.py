@@ -31,12 +31,14 @@ from ...modeling_outputs import (
     TokenClassifierOutput,
 )
 from ...modeling_utils import PreTrainedModel
+from ...processing_utils import Unpack
 from ...pytorch_utils import apply_chunking_to_forward
 from ...utils import (
     auto_docstring,
     logging,
     torch_int,
 )
+from ...utils.generic import TransformersKwargs, check_model_inputs
 from .configuration_layoutlmv3 import LayoutLMv3Config
 
 
@@ -201,6 +203,7 @@ class LayoutLMv3PreTrainedModel(PreTrainedModel):
     config: LayoutLMv3Config
     base_model_prefix = "layoutlmv3"
     input_modalities = ("image", "text")
+    _can_record_outputs = {"hidden_states": "LayoutLMv3Layer", "attentions": "LayoutLMv3Attention"}
 
     @torch.no_grad()
     def _init_weights(self, module):
@@ -484,23 +487,17 @@ class LayoutLMv3Encoder(nn.Module):
         hidden_states,
         bbox=None,
         attention_mask=None,
-        output_attentions=False,
-        output_hidden_states=False,
-        return_dict=True,
         position_ids=None,
         patch_height=None,
         patch_width=None,
+        **kwargs: Unpack[TransformersKwargs],
     ):
-        all_hidden_states = () if output_hidden_states else None
-        all_self_attentions = () if output_attentions else None
+        output_attentions = kwargs.get("output_attentions", getattr(self.config, "output_attentions", False))
 
         rel_pos = self._cal_1d_pos_emb(position_ids) if self.has_relative_attention_bias else None
         rel_2d_pos = self._cal_2d_pos_emb(bbox) if self.has_spatial_attention_bias else None
 
         for i, layer_module in enumerate(self.layer):
-            if output_hidden_states:
-                all_hidden_states = all_hidden_states + (hidden_states,)
-
             layer_outputs = layer_module(
                 hidden_states,
                 attention_mask,
@@ -510,27 +507,7 @@ class LayoutLMv3Encoder(nn.Module):
             )
 
             hidden_states = layer_outputs[0]
-            if output_attentions:
-                all_self_attentions = all_self_attentions + (layer_outputs[1],)
-
-        if output_hidden_states:
-            all_hidden_states = all_hidden_states + (hidden_states,)
-
-        if not return_dict:
-            return tuple(
-                v
-                for v in [
-                    hidden_states,
-                    all_hidden_states,
-                    all_self_attentions,
-                ]
-                if v is not None
-            )
-        return BaseModelOutput(
-            last_hidden_state=hidden_states,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attentions,
-        )
+        return BaseModelOutput(last_hidden_state=hidden_states)
 
 
 # Copied from transformers.models.roberta.modeling_roberta.RobertaIntermediate
@@ -648,6 +625,7 @@ class LayoutLMv3Model(LayoutLMv3PreTrainedModel):
 
         return embeddings
 
+    @check_model_inputs
     @auto_docstring
     def forward(
         self,
@@ -658,10 +636,7 @@ class LayoutLMv3Model(LayoutLMv3PreTrainedModel):
         position_ids: torch.LongTensor | None = None,
         inputs_embeds: torch.FloatTensor | None = None,
         pixel_values: torch.FloatTensor | None = None,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = None,
-        return_dict: bool | None = None,
-        **kwargs,
+        **kwargs: Unpack[TransformersKwargs],
     ) -> tuple | BaseModelOutput:
         r"""
         input_ids (`torch.LongTensor` of shape `(batch_size, token_sequence_length)`):
@@ -726,12 +701,6 @@ class LayoutLMv3Model(LayoutLMv3PreTrainedModel):
         >>> outputs = model(**encoding)
         >>> last_hidden_states = outputs.last_hidden_state
         ```"""
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
         if input_ids is not None:
             input_shape = input_ids.size()
             batch_size, seq_length = input_shape
@@ -820,22 +789,15 @@ class LayoutLMv3Model(LayoutLMv3PreTrainedModel):
             bbox=final_bbox,
             position_ids=final_position_ids,
             attention_mask=extended_attention_mask,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
             patch_height=patch_height,
             patch_width=patch_width,
+            **kwargs,
         )
 
-        sequence_output = encoder_outputs[0]
-
-        if not return_dict:
-            return (sequence_output,) + encoder_outputs[1:]
+        sequence_output = encoder_outputs.last_hidden_state
 
         return BaseModelOutput(
             last_hidden_state=sequence_output,
-            hidden_states=encoder_outputs.hidden_states,
-            attentions=encoder_outputs.attentions,
         )
 
 

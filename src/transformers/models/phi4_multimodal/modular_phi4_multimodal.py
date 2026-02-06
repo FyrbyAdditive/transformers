@@ -1499,8 +1499,6 @@ class Phi4MultimodalModel(Phi3Model):
         audio_embed_sizes=None,
         audio_attention_mask=None,
         use_cache: bool | None = None,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = None,
         cache_position: torch.LongTensor | None = None,
         **kwargs,
     ) -> tuple | BaseModelOutputWithPast:
@@ -1590,6 +1588,7 @@ class Phi4MultimodalForCausalLM(Phi3ForCausalLM):
         # Initialize weights and apply final processing
         self.post_init()
 
+    @check_model_inputs
     def forward(
         self,
         input_ids: torch.LongTensor | None = None,
@@ -1605,8 +1604,6 @@ class Phi4MultimodalForCausalLM(Phi3ForCausalLM):
         audio_attention_mask=None,
         labels: torch.LongTensor | None = None,
         use_cache: bool | None = None,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = None,
         cache_position: torch.LongTensor | None = None,
         logits_to_keep: int | torch.Tensor = 0,
         **kwargs,
@@ -1644,11 +1641,6 @@ class Phi4MultimodalForCausalLM(Phi3ForCausalLM):
         'This is an example script .\n Certainly! Below is a sample script that demonstrates a simple task, such as calculating the sum'
         ```"""
 
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs: BaseModelOutputWithPast = self.model(
             input_ids=input_ids,
@@ -1663,8 +1655,6 @@ class Phi4MultimodalForCausalLM(Phi3ForCausalLM):
             audio_embed_sizes=audio_embed_sizes,
             audio_attention_mask=audio_attention_mask,
             use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
             cache_position=cache_position,
             **kwargs,
         )
