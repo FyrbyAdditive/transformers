@@ -115,7 +115,11 @@ class Ernie4_5_MoeModelTest(CausalLMModelTest, unittest.TestCase):
         pad_length = input_ids.shape[1] * 4
         # Add extra tokens to input_ids and mask them out to simulate left padding
         padding_block = torch.randint(
-            low=0, high=config.vocab_size, size=(input_ids.shape[0], pad_length), dtype=torch.int32, device=torch_device
+            low=0,
+            high=config.vocab_size,
+            size=(input_ids.shape[0], pad_length),
+            dtype=torch.int32,
+            device=torch_device,
         )
         padding_block[padding_block == config.pad_token_id] = (config.pad_token_id + 1) % config.vocab_size
         padded_input_ids = torch.cat((padding_block, input_ids), dim=1)
