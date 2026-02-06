@@ -28,7 +28,7 @@ from ...cache_utils import Cache
 from ...modeling_outputs import BaseModelOutputWithPooling
 from ...processing_utils import Unpack
 from ...utils import TransformersKwargs, auto_docstring, logging
-from ...utils.generic import check_model_inputs
+from ...utils.generic import can_return_tuple
 from .configuration_vipllava import VipLlavaConfig
 
 
@@ -72,7 +72,7 @@ class VipLlavaPreTrainedModel(LlavaPreTrainedModel):
 
 
 class VipLlavaModel(LlavaModel):
-    @check_model_inputs(tie_last_hidden_states=False)
+    @can_return_tuple
     @auto_docstring(
         custom_intro="Obtains image last hidden states from the vision tower and apply multimodal projection."
     )
@@ -113,7 +113,6 @@ class VipLlavaModel(LlavaModel):
 
         return image_outputs
 
-    @check_model_inputs(tie_last_hidden_states=False)
     @auto_docstring
     def forward(
         self,
@@ -193,7 +192,6 @@ class VipLlavaForConditionalGeneration(LlavaForConditionalGeneration):
             pixel_values=pixel_values, vision_feature_layers=vision_feature_layers, **kwargs
         )
 
-    @check_model_inputs(tie_last_hidden_states=False)
     def forward(
         self,
         input_ids: torch.LongTensor | None = None,

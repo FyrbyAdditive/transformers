@@ -227,7 +227,7 @@ class GPTNeoXLayer(GradientCheckpointingLayer):
         position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
         **kwargs: Unpack[FlashAttentionKwargs],
     ):
-        attn_output, attn_weights = self.attention(
+        attn_output, _ = self.attention(
             self.input_layernorm(hidden_states),
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -249,7 +249,7 @@ class GPTNeoXLayer(GradientCheckpointingLayer):
             mlp_output = self.post_mlp_dropout(mlp_output)
             hidden_states = mlp_output + attn_output
 
-        return hidden_states, attn_weights
+        return hidden_states
 
 
 class GPTNeoXPreTrainedModel(LlamaPreTrainedModel):
@@ -299,17 +299,8 @@ class GPTNeoXModel(LlamaModel):
         cache_position: torch.LongTensor | None = None,
         **kwargs: Unpack[TransformersKwargs],
     ) -> BaseModelOutputWithPast:
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
-
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
-
-        if self.gradient_checkpointing and self.training:
-            if use_cache:
-                logger.warning_once(
-                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                )
-                use_cache = False
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_in(input_ids)
@@ -337,9 +328,8 @@ class GPTNeoXModel(LlamaModel):
 
         hidden_states = self.emb_dropout(inputs_embeds)
         position_embeddings = self.rotary_emb(hidden_states, position_ids=position_ids)
-
         for layer in self.layers:
-            hidden_states, attn_weights = layer(
+            hidden_states = layer(
                 hidden_states,
                 attention_mask=causal_mask,
                 position_ids=position_ids,

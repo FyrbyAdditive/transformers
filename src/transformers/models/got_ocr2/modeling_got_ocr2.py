@@ -592,7 +592,6 @@ class GotOcr2Model(GotOcr2PreTrainedModel):
         )
         return special_image_mask
 
-    @check_model_inputs(tie_last_hidden_states=False)
     @can_return_tuple
     @auto_docstring
     def forward(

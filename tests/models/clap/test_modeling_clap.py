@@ -539,7 +539,9 @@ class ClapModelIntegrationTest(unittest.TestCase):
             expected_mean = EXPECTED_MEANS_UNFUSED[padding]
 
             self.assertTrue(
-                torch.allclose(audio_embed.cpu().mean(), torch.tensor([expected_mean]), atol=1e-3, rtol=1e-3)
+                torch.allclose(
+                    audio_embed.pooler_output.cpu().mean(), torch.tensor([expected_mean]), atol=1e-3, rtol=1e-3
+                )
             )
 
     @require_numba
@@ -567,7 +569,9 @@ class ClapModelIntegrationTest(unittest.TestCase):
             expected_mean = EXPECTED_MEANS_FUSED[padding]
 
             self.assertTrue(
-                torch.allclose(audio_embed.cpu().mean(), torch.tensor([expected_mean]), atol=1e-3, rtol=1e-3)
+                torch.allclose(
+                    audio_embed.pooler_output.cpu().mean(), torch.tensor([expected_mean]), atol=1e-3, rtol=1e-3
+                )
             )
 
     def test_batched_fused(self):
@@ -594,7 +598,9 @@ class ClapModelIntegrationTest(unittest.TestCase):
             expected_mean = EXPECTED_MEANS_FUSED[padding]
 
             self.assertTrue(
-                torch.allclose(audio_embed.cpu().mean(), torch.tensor([expected_mean]), atol=1e-3, rtol=1e-3)
+                torch.allclose(
+                    audio_embed.pooler_output.cpu().mean(), torch.tensor([expected_mean]), atol=1e-3, rtol=1e-3
+                )
             )
 
     def test_batched_unfused(self):
@@ -619,5 +625,7 @@ class ClapModelIntegrationTest(unittest.TestCase):
             expected_mean = EXPECTED_MEANS_FUSED[padding]
 
             self.assertTrue(
-                torch.allclose(audio_embed.cpu().mean(), torch.tensor([expected_mean]), atol=1e-3, rtol=1e-3)
+                torch.allclose(
+                    audio_embed.pooler_output.cpu().mean(), torch.tensor([expected_mean]), atol=1e-3, rtol=1e-3
+                )
             )
