@@ -1868,7 +1868,7 @@ class Trainer:
     def train(
         self,
         resume_from_checkpoint: str | bool | None = None,
-        trial: Union["optuna.Trial", dict[str, Any]] | None = None,
+        trial: "optuna.Trial | dict[str, Any] | None" = None,
         ignore_keys_for_eval: list[str] | None = None,
     ):
         """

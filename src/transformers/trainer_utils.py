@@ -71,9 +71,6 @@ def _is_peft_model(model):
     return False
 
 
-logger = logging.get_logger(__name__)
-
-
 def seed_worker(worker_id: int, num_workers: int, rank: int):
     """
     Helper function to set worker seed during Dataloader initialization.
