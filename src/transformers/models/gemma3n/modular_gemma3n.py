@@ -2284,7 +2284,6 @@ class Gemma3nModel(PaliGemmaModel):
 
         return special_image_mask, special_audio_mask
 
-    @check_model_inputs
     def forward(
         self,
         input_ids: torch.LongTensor | None = None,  # text inputs
@@ -2453,7 +2452,6 @@ class Gemma3nModel(PaliGemmaModel):
 class Gemma3nForConditionalGeneration(PaliGemmaForConditionalGeneration):
     _checkpoint_conversion_mapping = {}
 
-    @check_model_inputs
     @auto_docstring
     def forward(
         self,
