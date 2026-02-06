@@ -119,7 +119,6 @@ from .trainer_utils import (
     TrainerMemoryTracker,
     TrainOutput,
     _is_peft_model,
-    check_target_module_exists,
     default_compute_objective,
     denumpify_detensorize,
     enable_full_determinism,
