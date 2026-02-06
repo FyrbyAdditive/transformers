@@ -741,10 +741,8 @@ class TrainingArguments:
             scripts](https://github.com/huggingface/transformers/tree/main/examples) for more details.
     """
 
-    # Sometimes users will pass in a `str` repr of a dict in the CLI
-    # We need to track what fields those can be. Each time a new arg
-    # has a dict type, it must be added to this list.
-    # Important: These should be typed with Optional[Union[dict,str,...]]
+    # Fields that accept dict values via CLI as JSON strings (e.g., '{"key": "value"}').
+    # Any new dict-typed arg must be added here and typed as `dict | str | None`.
     _VALID_DICT_FIELDS = [
         "accelerator_config",
         "fsdp_config",
@@ -1396,26 +1394,22 @@ class TrainingArguments:
     def __post_init__(self):
         # ── 1. Defaults & Normalization ──
         if self.output_dir is None:
-            self.output_dir = "tmp_trainer"
+            self.output_dir = "trainer_output"
             logger.info(
-                "No output directory specified, defaulting to 'tmp_trainer'. "
+                "No output directory specified, defaulting to 'trainer_output'. "
                 "To change this behavior, specify --output_dir when creating TrainingArguments."
             )
 
-        # Parse in args that could be `dict` sent in from the CLI as a string
+        # Parse JSON string dict args from CLI (e.g., '{"key": "value"}').
+        # Only parses strings starting with '{'; other strings are treated as file paths.
         for valid_field in self._VALID_DICT_FIELDS:
             passed_value = getattr(self, valid_field)
-            # We only want to do this if the str starts with a bracket to indicate a `dict`
-            # else its likely a filename if supported
             if isinstance(passed_value, str) and passed_value.startswith("{"):
                 loaded_dict = json.loads(passed_value)
-                # Convert str values to types if applicable
                 loaded_dict = _convert_str_dict(loaded_dict)
                 setattr(self, valid_field, loaded_dict)
 
-        # expand paths, if not os.makedirs("~/bar") will make directory
-        # in the current directory instead of the actual home
-        # see https://github.com/huggingface/transformers/issues/10628
+        # Expand ~ in paths so os.makedirs works correctly (#10628)
         if self.output_dir is not None:
             self.output_dir = os.path.expanduser(self.output_dir)
 
@@ -1451,7 +1445,7 @@ class TrainingArguments:
         if self.do_eval is False and self.eval_strategy != IntervalStrategy.NO:
             self.do_eval = True
 
-        # eval_steps has to be defined and non-zero, falls back to logging_steps if the latter is non-zero
+        # Fall back to logging_steps if eval_steps is unset
         if self.eval_strategy == IntervalStrategy.STEPS and (self.eval_steps is None or self.eval_steps == 0):
             if self.logging_steps > 0:
                 logger.info(f"using `logging_steps` to initialize `eval_steps` to {self.logging_steps}")
@@ -1469,109 +1463,16 @@ class TrainingArguments:
         if self.greater_is_better is None and self.metric_for_best_model is not None:
             self.greater_is_better = not self.metric_for_best_model.endswith("loss")
 
-        if self.report_to == "all" or self.report_to == ["all"]:
-            # Import at runtime to avoid a circular import.
-            from .integrations import get_available_reporting_integrations
-
-            self.report_to = get_available_reporting_integrations()
-
-            if "codecarbon" in self.report_to and torch.version.hip:
-                logger.warning(
-                    "When using the Trainer, CodeCarbonCallback requires the `codecarbon` package, which is not compatible with AMD ROCm (https://github.com/mlco2/codecarbon/pull/490). Automatically disabling the codecarbon callback. Reference: https://huggingface.co/docs/transformers/v4.39.3/en/main_classes/trainer#transformers.TrainingArguments.report_to."
-                )
-                self.report_to.remove("codecarbon")
-
-        elif self.report_to == "none" or self.report_to == ["none"]:
+        if self.report_to == "none" or self.report_to == ["none"]:
             self.report_to = []
         elif not isinstance(self.report_to, list):
             self.report_to = [self.report_to]
 
         # ── 4. Validation ──
-        if self.torch_empty_cache_steps is not None:
-            if not (isinstance(self.torch_empty_cache_steps, int) and self.torch_empty_cache_steps > 0):
-                raise ValueError(
-                    f"`torch_empty_cache_steps` must be an integer bigger than 0, got {self.torch_empty_cache_steps}."
-                )
-
-        # logging_steps must be non-zero for logging_strategy that is other than 'no'
-        if self.logging_strategy == IntervalStrategy.STEPS and self.logging_steps == 0:
-            raise ValueError(f"logging strategy {self.logging_strategy} requires non-zero --logging_steps")
-
-        if self.logging_strategy == IntervalStrategy.STEPS and self.logging_steps > 1:
-            if self.logging_steps != int(self.logging_steps):
-                raise ValueError(f"--logging_steps must be an integer if bigger than 1: {self.logging_steps}")
-            self.logging_steps = int(self.logging_steps)
-        if self.eval_strategy == IntervalStrategy.STEPS and self.eval_steps > 1:
-            if self.eval_steps != int(self.eval_steps):
-                raise ValueError(f"--eval_steps must be an integer if bigger than 1: {self.eval_steps}")
-            self.eval_steps = int(self.eval_steps)
-        if self.save_strategy == SaveStrategy.STEPS and self.save_steps > 1:
-            if self.save_steps != int(self.save_steps):
-                raise ValueError(f"--save_steps must be an integer if bigger than 1: {self.save_steps}")
-            self.save_steps = int(self.save_steps)
-
-        # Sanity checks for load_best_model_at_end: we require save and eval strategies to be compatible.
-        if self.load_best_model_at_end and self.save_strategy != SaveStrategy.BEST:
-            if self.eval_strategy != self.save_strategy:
-                raise ValueError(
-                    "--load_best_model_at_end requires the save and eval strategy to match, but found\n- Evaluation "
-                    f"strategy: {self.eval_strategy}\n- Save strategy: {self.save_strategy}"
-                )
-            if self.eval_strategy == IntervalStrategy.STEPS and self.save_steps % self.eval_steps != 0:
-                if self.eval_steps < 1 or self.save_steps < 1:
-                    if not (self.eval_steps < 1 and self.save_steps < 1):
-                        raise ValueError(
-                            "--load_best_model_at_end requires the saving steps to be a multiple of the evaluation "
-                            "steps, which cannot get guaranteed when mixing ratio and absolute steps for save_steps "
-                            f"{self.save_steps} and eval_steps {self.eval_steps}."
-                        )
-                    # Work around floating point precision issues
-                    LARGE_MULTIPLIER = 1_000_000
-                    if (self.save_steps * LARGE_MULTIPLIER) % (self.eval_steps * LARGE_MULTIPLIER) != 0:
-                        raise ValueError(
-                            "--load_best_model_at_end requires the saving steps to be a multiple of the evaluation "
-                            f"steps, but found {self.save_steps}, which is not a multiple of {self.eval_steps}."
-                        )
-                else:
-                    raise ValueError(
-                        "--load_best_model_at_end requires the saving steps to be a round multiple of the evaluation "
-                        f"steps, but found {self.save_steps}, which is not a round multiple of {self.eval_steps}."
-                    )
-
-        if is_torch_available():
-            if self.bf16 or self.bf16_full_eval:
-                if (
-                    not self.use_cpu and not is_torch_bf16_gpu_available() and not is_torch_xla_available()
-                ):  # added for tpu support
-                    error_message = "Your setup doesn't support bf16/gpu. You need to assign use_cpu if you want to train the model on CPU"
-                    if is_torch_cuda_available():
-                        error_message += " You need Ampere+ GPU with cuda>=11.0"
-                    # gpu
-                    raise ValueError(error_message)
-
-        if self.fp16 and self.bf16:
-            raise ValueError("At most one of fp16 and bf16 can be True, but not both")
-
-        if self.fp16_full_eval and self.bf16_full_eval:
-            raise ValueError("At most one of fp16 and bf16 can be True for full eval, but not both")
-
-        if self.lr_scheduler_type == SchedulerType.REDUCE_ON_PLATEAU:
-            if self.eval_strategy == IntervalStrategy.NO:
-                raise ValueError("lr_scheduler_type reduce_lr_on_plateau requires an eval strategy")
-            if not is_torch_available():
-                raise ValueError("lr_scheduler_type reduce_lr_on_plateau requires torch>=0.2.0")
-
-        if self.warmup_steps < 0:
-            raise ValueError("warmup_steps must be an integer or a float")
-
-        if self.dataloader_num_workers == 0 and self.dataloader_prefetch_factor is not None:
-            raise ValueError(
-                "--dataloader_prefetch_factor can only be set when data is loaded in a different process, i.e."
-                " when --dataloader_num_workers > 1."
-            )
+        self._validate()
 
         # ── 5. Mixed Precision ──
-        # We need to get from the env as we are setting deepspeed mixed precison afterwards
+        # Read from env first; DeepSpeed may override this later
         self.mixed_precision = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
         if self.fp16:
             self.mixed_precision = "fp16"
@@ -1588,22 +1489,20 @@ class TrainingArguments:
                 self.torch_compile_backend = "inductor"
 
         if self.torch_compile:
-            # TODO: remove this once we've bumped the minimum accelerate version
+            # TODO: remove env var fallback once minimum accelerate >= 1.2.0
             if not is_accelerate_available("1.2.0"):
                 os.environ["ACCELERATE_DYNAMO_BACKEND"] = self.torch_compile_backend
                 if self.torch_compile_mode is not None:
                     os.environ["ACCELERATE_DYNAMO_MODE"] = self.torch_compile_mode
 
-        # ── 7. Accelerator Config ──
-        # We need to setup the accelerator config here *before* the first call to `self.device`
+        # ── 7. Accelerator Config (must come before self.device) ──
         if is_accelerate_available():
             if not isinstance(self.accelerator_config, AcceleratorConfig):
                 if self.accelerator_config is None:
                     self.accelerator_config = AcceleratorConfig()
                 elif isinstance(self.accelerator_config, dict):
                     self.accelerator_config = AcceleratorConfig(**self.accelerator_config)
-                # Check that a user didn't pass in the class instantiator
-                # such as `accelerator_config = AcceleratorConfig`
+                # Reject uninstantiated class (e.g. AcceleratorConfig instead of AcceleratorConfig())
                 elif isinstance(self.accelerator_config, type):
                     raise NotImplementedError(
                         "Tried passing in a callable to `accelerator_config`, but this is not supported. "
@@ -1618,7 +1517,6 @@ class TrainingArguments:
                 )
 
         # ── 8. Device Init ──
-        # Initialize device before we proceed
         if is_torch_available():
             self.device
 
@@ -1645,44 +1543,117 @@ class TrainingArguments:
             else:
                 if is_torch_tf32_available():
                     enable_tf32(False)
-                # no need to assert on else
+                # TF32 not available, nothing to disable
 
         # ── 10. Hardware Overrides ──
         if self.use_cpu:
             self.dataloader_pin_memory = False
 
         # ── 11. FSDP ──
-        self.fsdp_plugin_args = None
-        # we can't save the plugin due to a pickle issue, so we do not initialize the plugin here
         self.fsdp_plugin_args = self._process_fsdp_args()
 
         # ── 12. DeepSpeed (must be last) ──
         self.deepspeed_plugin = None
         if self.deepspeed:
-            # - must be run very last in arg parsing, since it will use a lot of these settings.
-            # - must be run before the model is created.
-            if not is_accelerate_available():
-                raise ValueError(
-                    f"--deepspeed requires Accelerate to be installed: `pip install 'accelerate>={ACCELERATE_MIN_VERSION}'`."
-                )
             from transformers.integrations.deepspeed import HfTrainerDeepSpeedConfig
 
-            # will be used later by the Trainer
-            # note: leave self.deepspeed unmodified in case a user relies on it not to be modified)
+            # Leave self.deepspeed unmodified; users may rely on the original value
             self.hf_deepspeed_config = HfTrainerDeepSpeedConfig(self.deepspeed)
             self.hf_deepspeed_config.trainer_config_process(self)
 
-            # Accelerate DeepSpeed Plugin
             from accelerate.utils import DeepSpeedPlugin
 
             self.deepspeed_plugin = DeepSpeedPlugin(hf_ds_config=self.hf_deepspeed_config)
         elif strtobool(os.environ.get("ACCELERATE_USE_DEEPSPEED", "false")):
-            # Accelerate DeepSpeed Plugin
             from accelerate.utils import DeepSpeedPlugin
 
             self.deepspeed_plugin = DeepSpeedPlugin()
             self.deepspeed_plugin.set_mixed_precision(self.mixed_precision)
             self.deepspeed_plugin.set_deepspeed_weakref()
+
+    def _validate(self):
+        """Validate argument combinations and value constraints."""
+        if self.torch_empty_cache_steps is not None:
+            if not (isinstance(self.torch_empty_cache_steps, int) and self.torch_empty_cache_steps > 0):
+                raise ValueError(
+                    f"`torch_empty_cache_steps` must be an integer bigger than 0, got {self.torch_empty_cache_steps}."
+                )
+
+        # logging_steps must be non-zero when logging_strategy="steps"
+        if self.logging_strategy == IntervalStrategy.STEPS and self.logging_steps == 0:
+            raise ValueError(f"logging strategy {self.logging_strategy} requires non-zero --logging_steps")
+
+        if self.logging_strategy == IntervalStrategy.STEPS and self.logging_steps > 1:
+            if self.logging_steps != int(self.logging_steps):
+                raise ValueError(f"--logging_steps must be an integer if bigger than 1: {self.logging_steps}")
+            self.logging_steps = int(self.logging_steps)
+        if self.eval_strategy == IntervalStrategy.STEPS and self.eval_steps > 1:
+            if self.eval_steps != int(self.eval_steps):
+                raise ValueError(f"--eval_steps must be an integer if bigger than 1: {self.eval_steps}")
+            self.eval_steps = int(self.eval_steps)
+        if self.save_strategy == SaveStrategy.STEPS and self.save_steps > 1:
+            if self.save_steps != int(self.save_steps):
+                raise ValueError(f"--save_steps must be an integer if bigger than 1: {self.save_steps}")
+            self.save_steps = int(self.save_steps)
+
+        # load_best_model_at_end requires compatible save and eval strategies
+        if self.load_best_model_at_end and self.save_strategy != SaveStrategy.BEST:
+            if self.eval_strategy != self.save_strategy:
+                raise ValueError(
+                    "--load_best_model_at_end requires the save and eval strategy to match, but found\n- Evaluation "
+                    f"strategy: {self.eval_strategy}\n- Save strategy: {self.save_strategy}"
+                )
+            if self.eval_strategy == IntervalStrategy.STEPS and self.save_steps % self.eval_steps != 0:
+                if self.eval_steps < 1 or self.save_steps < 1:
+                    if not (self.eval_steps < 1 and self.save_steps < 1):
+                        raise ValueError(
+                            "--load_best_model_at_end requires the saving steps to be a multiple of the evaluation "
+                            "steps, which cannot get guaranteed when mixing ratio and absolute steps for save_steps "
+                            f"{self.save_steps} and eval_steps {self.eval_steps}."
+                        )
+                    # Use integer arithmetic to avoid floating point precision issues
+                    LARGE_MULTIPLIER = 1_000_000
+                    if (self.save_steps * LARGE_MULTIPLIER) % (self.eval_steps * LARGE_MULTIPLIER) != 0:
+                        raise ValueError(
+                            "--load_best_model_at_end requires the saving steps to be a multiple of the evaluation "
+                            f"steps, but found {self.save_steps}, which is not a multiple of {self.eval_steps}."
+                        )
+                else:
+                    raise ValueError(
+                        "--load_best_model_at_end requires the saving steps to be a round multiple of the evaluation "
+                        f"steps, but found {self.save_steps}, which is not a round multiple of {self.eval_steps}."
+                    )
+
+        if is_torch_available():
+            if self.bf16 or self.bf16_full_eval:
+                if (
+                    not self.use_cpu and not is_torch_bf16_gpu_available() and not is_torch_xla_available()
+                ):
+                    error_message = "Your setup doesn't support bf16/gpu. You need to assign use_cpu if you want to train the model on CPU."
+                    if is_torch_cuda_available():
+                        error_message += " You need Ampere+ GPU with cuda>=11.0."
+                    raise ValueError(error_message)
+
+        if self.fp16 and self.bf16:
+            raise ValueError("At most one of fp16 and bf16 can be True, but not both")
+
+        if self.fp16_full_eval and self.bf16_full_eval:
+            raise ValueError("At most one of fp16 and bf16 can be True for full eval, but not both")
+
+        if self.lr_scheduler_type == SchedulerType.REDUCE_ON_PLATEAU:
+            if self.eval_strategy == IntervalStrategy.NO:
+                raise ValueError("lr_scheduler_type reduce_lr_on_plateau requires an eval strategy")
+            if not is_torch_available():
+                raise ValueError("lr_scheduler_type reduce_lr_on_plateau requires torch>=0.2.0")
+
+        if self.warmup_steps < 0:
+            raise ValueError("warmup_steps must be an integer or a float")
+
+        if self.dataloader_num_workers == 0 and self.dataloader_prefetch_factor is not None:
+            raise ValueError(
+                "--dataloader_prefetch_factor can only be set when data is loaded in a different process, i.e."
+                " when --dataloader_num_workers > 1."
+            )
 
     def __str__(self):
         self_as_dict = asdict(self)
@@ -1727,7 +1698,7 @@ class TrainingArguments:
                     f"Using the `Trainer` with `PyTorch` requires `accelerate>={ACCELERATE_MIN_VERSION}`: "
                     f"Please run `pip install transformers[torch]` or `pip install 'accelerate>={ACCELERATE_MIN_VERSION}'`"
                 )
-        # We delay the init of `PartialState` to the end for clarity
+        # Build kwargs for PartialState; actual init happens below
         accelerator_state_kwargs: dict[str, Any] = {"enabled": True, "use_configured_state": False}
         if isinstance(self.accelerator_config, AcceleratorConfig):
             accelerator_state_kwargs["use_configured_state"] = self.accelerator_config.pop(
@@ -1739,7 +1710,6 @@ class TrainingArguments:
                     "Passing `'use_configured_state':True` to the AcceleratorConfig requires a pre-configured "
                     "`AcceleratorState` or `PartialState` to be defined before calling `TrainingArguments`. "
                 )
-            # We rely on `PartialState` to yell if there's issues here (which it will)
             self.distributed_state = PartialState(cpu=self.use_cpu)
             if self.deepspeed and self.distributed_state.distributed_type != DistributedType.DEEPSPEED:
                 raise RuntimeError(
@@ -1769,11 +1739,11 @@ class TrainingArguments:
             accelerator_state_kwargs["backend"] = self.ddp_backend
             accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
 
-        # Now we pop everything
+        # Initialize PartialState with the accumulated kwargs
         if accelerator_state_kwargs.pop("enabled", False) and not accelerator_state_kwargs.pop(
             "use_configured_state", False
         ):
-            # We need to patch this env var when enabling to detect deepspeed
+            # Temporarily set env var so Accelerate detects DeepSpeed
             use_deepspeed = accelerator_state_kwargs.pop("use_deepspeed", False)
             if use_deepspeed:
                 os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
@@ -1791,8 +1761,7 @@ class TrainingArguments:
             device = self.distributed_state.device
             self._n_gpu = 0
         elif is_sagemaker_dp_enabled() or is_sagemaker_mp_enabled():
-            # Already set _n_gpu
-            pass
+            pass  # _n_gpu already set above
         elif self.distributed_state.distributed_type == DistributedType.NO:
             if self.use_cpu:
                 device = torch.device("cpu")
@@ -1814,17 +1783,11 @@ class TrainingArguments:
                 device = torch.device("hpu:0")
                 torch.hpu.set_device(device)
             else:
-                # if n_gpu is > 1 we'll use nn.DataParallel.
-                # If you only want to use a specific subset of GPUs use `CUDA_VISIBLE_DEVICES=0`
-                # Explicitly set CUDA to the first (index 0) CUDA device, otherwise `set_device` will
-                # trigger an error that a device index is missing. Index 0 takes into account the
-                # GPUs available in the environment, so `CUDA_VISIBLE_DEVICES=1,2` with `cuda:0`
-                # will use the first GPU in that env, i.e. GPU#1
+                # Default to cuda:0 (respects CUDA_VISIBLE_DEVICES); nn.DataParallel handles n_gpu > 1
                 device = torch.device(
                     "cuda:0" if torch.cuda.is_available() else os.environ.get("ACCELERATE_TORCH_DEVICE", "cpu")
                 )
-                # Sometimes the line in the postinit has not been run before we end up here, so just checking we're not at
-                # the default value.
+                # _n_gpu may not have been set yet if _setup_devices is called early
                 self._n_gpu = torch.cuda.device_count()
                 if device.type == "cuda":
                     torch.cuda.set_device(device)
@@ -1848,7 +1811,7 @@ class TrainingArguments:
             training. For distributed training, it will always be 1.
         """
         requires_backends(self, ["torch"])
-        # Make sure `self._n_gpu` is properly setup.
+        # Ensure _setup_devices has been called
         if not hasattr(self, "_n_gpu"):
             _ = self._setup_devices
         return self._n_gpu
@@ -2056,7 +2019,7 @@ class TrainingArguments:
         Serializes this instance while replace `Enum` by their values (for JSON serialization support). It obfuscates
         the token values by removing their value.
         """
-        # filter out fields that are defined as field(init=False)
+        # Exclude non-init fields (they aren't user-facing config)
         d = {field.name: getattr(self, field.name) for field in fields(self) if field.init}
 
         for k, v in d.items():
@@ -2066,10 +2029,10 @@ class TrainingArguments:
                 d[k] = [x.value for x in v]
             if k.endswith("_token"):
                 d[k] = f"<{k.upper()}>"
-            # Handle the accelerator_config if passed
+            # Serialize AcceleratorConfig to dict
             if is_accelerate_available() and isinstance(v, AcceleratorConfig):
                 d[k] = v.to_dict()
-            # Handle the quantization_config if passed
+            # Serialize quantization_config if nested inside model_init_kwargs
             if k == "model_init_kwargs" and isinstance(v, dict) and "quantization_config" in v:
                 quantization_config = v.get("quantization_config")
                 if quantization_config and not isinstance(quantization_config, dict):
@@ -2100,7 +2063,7 @@ class TrainingArguments:
 
         return {k: v if type(v) in valid_types else str(v) for k, v in d.items()}
 
-    # The following methods are there to simplify the instantiation of `TrainingArguments`
+    # Convenience setters for grouped configuration
     def set_training(
         self,
         learning_rate: float = 5e-5,
@@ -2674,7 +2637,7 @@ class TrainingArguments:
 
         self.fsdp_config["min_num_params"] = self.fsdp_config.get("min_num_params", 0)
 
-        # if fsdp_config["transformer_layer_cls_to_wrap"] is specified as a string, convert it to a list with a single object
+        # Normalize transformer_layer_cls_to_wrap from string to list
         if isinstance(self.fsdp_config.get("transformer_layer_cls_to_wrap", None), str):
             self.fsdp_config["transformer_layer_cls_to_wrap"] = [self.fsdp_config["transformer_layer_cls_to_wrap"]]
 
@@ -2695,10 +2658,9 @@ class TrainingArguments:
         self.fsdp_config["xla_fsdp_grad_ckpt"] = self.fsdp_config.get("xla_fsdp_grad_ckpt", False)
         if self.fsdp_config["xla"]:
             if len(self.fsdp) > 0:
-                # store XLA fsdp configuration parameters into a dictionary
-                # Copy the config to avoid modifying the original config (which may be used for JSON serialization)
+                # Copy to avoid mutating the original (needed for JSON serialization)
                 self.xla_fsdp_config = self.fsdp_config.get("xla_fsdp_settings", {}).copy()
-                # apply appropriate string to torch.dtype conversions for parameters
+                # Convert string dtype names to torch.dtype
                 if "compute_dtype" in self.xla_fsdp_config:
                     self.xla_fsdp_config["compute_dtype"] = getattr(torch, self.xla_fsdp_config["compute_dtype"])
                 if "buffer_dtype" in self.xla_fsdp_config:
@@ -2709,7 +2671,7 @@ class TrainingArguments:
             if self.fsdp_config["xla_fsdp_grad_ckpt"]:
                 warnings.warn("`--xla_fsdp_grad_ckpt` is useful only when `--xla` is set to true.")
 
-        # accelerate integration for FSDP
+        # Build kwargs for Accelerate's FSDPPlugin
         fsdp_plugin_args = None
         if len(self.fsdp) > 0 and not self.fsdp_config["xla"]:
             from accelerate.utils.constants import (
@@ -2754,11 +2716,10 @@ class TrainingArguments:
             sync_module_states = str(self.fsdp_config.get("sync_module_states", "true")).lower()
             cpu_ram_efficient_loading = str(self.fsdp_config.get("cpu_ram_efficient_loading", "false")).lower()
             if sync_module_states == "false" and cpu_ram_efficient_loading == "true":
-                # In this case, all the processes except the main process would have random weights leading
-                # to unexpected behaviour during training, thus throwing error here to prevent it.
+                # Without sync, non-main processes would have random weights
                 raise ValueError('`sync_module_states` must be `"True"` if `cpu_ram_efficient_loading` is `"True"`')
 
-            # we need to set the env here as otherwise we get a warning in accelerate + we need to set it for transformers
+            # Set env var to suppress Accelerate warning and for transformers to read
             fsdp_plugin_args["cpu_ram_efficient_loading"] = str_to_bool(cpu_ram_efficient_loading)
             os.environ["FSDP_CPU_RAM_EFFICIENT_LOADING"] = cpu_ram_efficient_loading
 
