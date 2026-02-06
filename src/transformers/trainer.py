@@ -558,18 +558,18 @@ class Trainer:
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.processing_class = processing_class
+        self.neftune_noise_alpha = args.neftune_noise_alpha
 
         # Callables
         self.compute_loss_func = compute_loss_func
         self.compute_metrics = compute_metrics
         self.preprocess_logits_for_metrics = preprocess_logits_for_metrics
-        self.neftune_noise_alpha = args.neftune_noise_alpha
 
         # Optimizer & scheduler
         self.optimizer, self.lr_scheduler = optimizers
         self.optimizer_cls_and_kwargs = optimizer_cls_and_kwargs
 
-        self._validate_args(compute_metrics, eval_dataset, train_dataset, model_init)
+        self._validate_args()
 
         # ---- 8. Callbacks -----------------------------------------------------------
         default_callbacks = DEFAULT_CALLBACKS + get_reporting_integration_callbacks(self.args.report_to)
@@ -628,19 +628,19 @@ class Trainer:
 
         self._memory_tracker.stop_and_update_metrics()
 
-    def _validate_args(self, compute_metrics, eval_dataset, train_dataset, model_init):
+    def _validate_args(self):
         """Validate constructor arguments and fail fast on incompatible combinations."""
         args = self.args
 
         # --- Training-argument validations ---
-        if args.batch_eval_metrics and compute_metrics is not None:
-            if "compute_result" not in inspect.signature(compute_metrics).parameters:
+        if args.batch_eval_metrics and self.compute_metrics is not None:
+            if "compute_result" not in inspect.signature(self.compute_metrics).parameters:
                 raise ValueError(
                     "When using `batch_eval_metrics`, your `compute_metrics` function must take a `compute_result`"
                     " boolean argument which will be triggered after the last batch of the eval set to signal that the"
                     " summary statistics should be returned by the function."
                 )
-        if args.eval_strategy is not None and args.eval_strategy != "no" and eval_dataset is None:
+        if args.eval_strategy is not None and args.eval_strategy != "no" and self.eval_dataset is None:
             raise ValueError(
                 f"You have set `args.eval_strategy` to {args.eval_strategy} but you didn't pass an `eval_dataset` to `Trainer`. Either set `args.eval_strategy` to `no` or pass an `eval_dataset`. "
             )
@@ -653,7 +653,7 @@ class Trainer:
         # --- Optimizer validations ---
         if self.optimizer_cls_and_kwargs is not None and self.optimizer is not None:
             raise RuntimeError("Passing both `optimizers` and `optimizer_cls_and_kwargs` arguments is incompatible.")
-        if model_init is not None and (self.optimizer is not None or self.lr_scheduler is not None):
+        if self.model_init is not None and (self.optimizer is not None or self.lr_scheduler is not None):
             raise RuntimeError(
                 "Passing a `model_init` is incompatible with providing the `optimizers` argument. "
                 "You should subclass `Trainer` and override the `create_optimizer_and_scheduler` method."
@@ -686,14 +686,14 @@ class Trainer:
             raise TypeError("The `data_collator` should be a simple callable (function, class with `__call__`).")
         if args.max_steps > 0 and args.num_train_epochs > 0:
             logger.info("max_steps is given, it will override any value given in num_train_epochs")
-        if train_dataset is not None and not has_length(train_dataset) and args.max_steps <= 0:
+        if self.train_dataset is not None and not has_length(self.train_dataset) and args.max_steps <= 0:
             raise ValueError(
                 "The train_dataset does not implement __len__, max_steps has to be specified. "
                 "The number of steps needs to be known in advance for the learning rate scheduler."
             )
         if (
-            train_dataset is not None
-            and isinstance(train_dataset, torch.utils.data.IterableDataset)
+            self.train_dataset is not None
+            and isinstance(self.train_dataset, torch.utils.data.IterableDataset)
             and args.group_by_length
         ):
             raise ValueError("the `--group_by_length` option is only available for `Dataset`, not `IterableDataset")
