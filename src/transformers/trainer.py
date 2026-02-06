@@ -588,7 +588,7 @@ class Trainer:
         self.add_callback(PrinterCallback if self.args.disable_tqdm else DEFAULT_PROGRESS_CALLBACK)
 
         # ---- 9. Hub & output ---------------------------------------------------------
-        self.hub_model_id = None
+        self.hub_model_id = None  # Set by init_hf_repo() when push_to_hub is enabled
         if self.args.push_to_hub:
             self.init_hf_repo()
         if self.args.should_save:
@@ -603,13 +603,18 @@ class Trainer:
                 cb for cb in self.callback_handler.callbacks + [self.control] if isinstance(cb, ExportableState)
             ],
         )
-        self.is_in_train = False
-        self.hp_name = None
-        self.hp_search_backend = None
+        self.is_in_train = False  # True between train() entry and exit
+        self.hp_name = None  # Set by hyperparameter_search() to label the trial
+        self.hp_search_backend = None  # Set by hyperparameter_search() (optuna / ray / wandb)
+        # Per-process FLOP counter; accumulated into self.state.total_flos then reset
         self.current_flos = 0
+        # Set True by _setup_loggers() on first call to self.log()
         self._loggers_initialized = False
+        # Lazily filled by _set_signature_columns_if_needed(); caches model.forward param names
         self._signature_columns = None
+        # Effective batch size; may be reduced by find_executable_batch_size
         self._train_batch_size = args.train_batch_size
+        # Guards one-time LR scheduler creation in create_optimizer_and_scheduler
         self._created_lr_scheduler = False
 
         self.control = self.callback_handler.on_init_end(self.args, self.state, self.control)
