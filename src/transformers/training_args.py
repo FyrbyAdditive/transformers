@@ -1396,9 +1396,9 @@ class TrainingArguments:
     def __post_init__(self):
         # ── 1. Defaults & Normalization ──
         if self.output_dir is None:
-            self.output_dir = "trainer_output"
+            self.output_dir = "tmp_trainer"
             logger.info(
-                "No output directory specified, defaulting to 'trainer_output'. "
+                "No output directory specified, defaulting to 'tmp_trainer'. "
                 "To change this behavior, specify --output_dir when creating TrainingArguments."
             )
 
