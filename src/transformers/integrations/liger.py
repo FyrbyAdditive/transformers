@@ -34,7 +34,7 @@ def apply_liger_kernel(model, kernel_config):
 
     Args:
         model: The model to patch. Must be a `PreTrainedModel` or a PEFT wrapper around one.
-        args: Training arguments. Uses `args.liger_kernel_config` for kernel configuration.
+        kernel_config: Kernel configuration.
     """
     if not is_liger_kernel_available():
         raise ImportError(
