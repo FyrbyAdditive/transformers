@@ -754,19 +754,17 @@ class TrainingArguments:
     # --- Output ---
     output_dir: str | None = field(
         default=None,
-        metadata={
-            "help": "The output directory where the model predictions and checkpoints will be written."
-        },
+        metadata={"help": "The output directory where the model predictions and checkpoints will be written."},
     )
 
     # --- Training Duration and Batch Size ---
-    per_device_train_batch_size: int = field(
-        default=8, metadata={"help": "The batch size per device for training."}
-    )
+    per_device_train_batch_size: int = field(default=8, metadata={"help": "The batch size per device for training."})
     num_train_epochs: float = field(default=3.0, metadata={"help": "Total number of training epochs to perform."})
     max_steps: int = field(
         default=-1,
-        metadata={"help": "Overrides `num_train_epochs`. If set to a positive number, the total number of training steps to perform."},
+        metadata={
+            "help": "Overrides `num_train_epochs`. If set to a positive number, the total number of training steps to perform."
+        },
     )
 
     # --- Learning Rate & Scheduler ---
@@ -801,26 +799,34 @@ class TrainingArguments:
     )
     optim_args: str | None = field(
         default=None,
-        metadata={"help": "Optional arguments supplied to optimizers such as AnyPrecisionAdamW, AdEMAMix, and GaLore."},
+        metadata={
+            "help": "Optional arguments supplied to optimizers such as AnyPrecisionAdamW, AdEMAMix, and GaLore."
+        },
     )
     weight_decay: float = field(
         default=0.0,
-        metadata={"help": "Weight decay coefficient applied by the optimizer. Automatically excluded from bias and LayerNorm parameters."},
+        metadata={
+            "help": "Weight decay coefficient applied by the optimizer. Automatically excluded from bias and LayerNorm parameters."
+        },
     )
     adam_beta1: float = field(
-        default=0.9, metadata={"help": "The exponential decay rate for the first moment estimates (momentum) in Adam-based optimizers."}
+        default=0.9,
+        metadata={
+            "help": "The exponential decay rate for the first moment estimates (momentum) in Adam-based optimizers."
+        },
     )
     adam_beta2: float = field(
-        default=0.999, metadata={"help": "The exponential decay rate for the second moment estimates (variance) in Adam-based optimizers."}
+        default=0.999,
+        metadata={
+            "help": "The exponential decay rate for the second moment estimates (variance) in Adam-based optimizers."
+        },
     )
     adam_epsilon: float = field(
         default=1e-8, metadata={"help": "Epsilon value for numerical stability in Adam-based optimizers."}
     )
     optim_target_modules: None | str | list[str] = field(
         default=None,
-        metadata={
-            "help": "The target modules to optimize. Currently used for the GaLore and APOLLO algorithms."
-        },
+        metadata={"help": "The target modules to optimize. Currently used for the GaLore and APOLLO algorithms."},
     )
 
     # --- Regularization & Training Stability ---
@@ -857,7 +863,9 @@ class TrainingArguments:
     )
     fp16: bool = field(
         default=False,
-        metadata={"help": "Enable float16 (FP16) mixed precision training. Consider using BF16 instead if your hardware supports it."},
+        metadata={
+            "help": "Enable float16 (FP16) mixed precision training. Consider using BF16 instead if your hardware supports it."
+        },
     )
     bf16_full_eval: bool = field(
         default=False,
@@ -867,7 +875,9 @@ class TrainingArguments:
     )
     fp16_full_eval: bool = field(
         default=False,
-        metadata={"help": "Use full FP16 precision for evaluation (not just mixed precision). Faster and saves memory."},
+        metadata={
+            "help": "Use full FP16 precision for evaluation (not just mixed precision). Faster and saves memory."
+        },
     )
     tf32: bool | None = field(
         default=None,
@@ -885,9 +895,7 @@ class TrainingArguments:
     )
     gradient_checkpointing_kwargs: dict[str, Any] | str | None = field(
         default=None,
-        metadata={
-            "help": "Keyword arguments passed to `gradient_checkpointing_enable()`."
-        },
+        metadata={"help": "Keyword arguments passed to `gradient_checkpointing_enable()`."},
     )
 
     # --- Compilation ---
@@ -910,7 +918,9 @@ class TrainingArguments:
     # --- Kernels ---
     use_liger_kernel: bool = field(
         default=False,
-        metadata={"help": "Enable Liger Kernel optimizations. Increases throughput by ~20% and reduces memory by ~60%."},
+        metadata={
+            "help": "Enable Liger Kernel optimizations. Increases throughput by ~20% and reduces memory by ~60%."
+        },
     )
     liger_kernel_config: dict[str, bool] | None = field(
         default=None,
@@ -959,7 +969,9 @@ class TrainingArguments:
             )
         },
     )
-    logging_first_step: bool = field(default=False, metadata={"help": "Whether to log the first `global_step` or not."})
+    logging_first_step: bool = field(
+        default=False, metadata={"help": "Whether to log the first `global_step` or not."}
+    )
     log_on_each_node: bool = field(
         default=True,
         metadata={
@@ -971,7 +983,9 @@ class TrainingArguments:
     )
     logging_nan_inf_filter: bool = field(
         default=True,
-        metadata={"help": "Filter out NaN and Inf losses when logging. Does not affect gradient computation, only logging."},
+        metadata={
+            "help": "Filter out NaN and Inf losses when logging. Does not affect gradient computation, only logging."
+        },
     )
     include_num_input_tokens_seen: str | bool = field(
         default="no",
@@ -999,7 +1013,8 @@ class TrainingArguments:
         },
     )
     disable_tqdm: bool | None = field(
-        default=None, metadata={"help": "Disable tqdm progress bars. Defaults to True if log_level is warning or lower."}
+        default=None,
+        metadata={"help": "Disable tqdm progress bars. Defaults to True if log_level is warning or lower."},
     )
 
     # --- Experiment Tracking ---
@@ -1091,9 +1106,7 @@ class TrainingArguments:
     # --- Metrics ---
     include_for_metrics: list[str] = field(
         default_factory=list,
-        metadata={
-            "help": "Include additional data in the `compute_metrics` function. Options: 'inputs', 'loss'."
-        },
+        metadata={"help": "Include additional data in the `compute_metrics` function. Options: 'inputs', 'loss'."},
     )
     batch_eval_metrics: bool = field(
         default=False,
@@ -1109,7 +1122,9 @@ class TrainingArguments:
     )
     save_strategy: SaveStrategy | str = field(
         default="steps",
-        metadata={"help": "The checkpoint save strategy to adopt during training. Options: 'no', 'epoch', 'steps', 'best'."},
+        metadata={
+            "help": "The checkpoint save strategy to adopt during training. Options: 'no', 'epoch', 'steps', 'best'."
+        },
     )
     save_steps: float = field(
         default=500,
@@ -1148,7 +1163,9 @@ class TrainingArguments:
     )
     hub_token: str | None = field(
         default=None,
-        metadata={"help": "The token to use to push the model to the Hub. Defaults to the token from `hf auth login`."},
+        metadata={
+            "help": "The token to use to push the model to the Hub. Defaults to the token from `hf auth login`."
+        },
     )
     hub_private_repo: bool | None = field(
         default=None,
@@ -1164,7 +1181,9 @@ class TrainingArguments:
     )
     hub_strategy: HubStrategy | str = field(
         default="every_save",
-        metadata={"help": "Defines what and when to push to Hub. Options: 'end', 'every_save', 'checkpoint', 'all_checkpoints'."},
+        metadata={
+            "help": "Defines what and when to push to Hub. Options: 'end', 'every_save', 'checkpoint', 'all_checkpoints'."
+        },
     )
     hub_always_push: bool = field(
         default=False,
@@ -1180,15 +1199,17 @@ class TrainingArguments:
     # --- Best Model Tracking ---
     load_best_model_at_end: bool = field(
         default=False,
-        metadata={
-            "help": "Load the best checkpoint at the end of training. Requires `eval_strategy` to be set."
-        },
+        metadata={"help": "Load the best checkpoint at the end of training. Requires `eval_strategy` to be set."},
     )
     metric_for_best_model: str | None = field(
-        default=None, metadata={"help": "Metric to use for comparing models when `load_best_model_at_end=True`. Defaults to 'loss'."}
+        default=None,
+        metadata={
+            "help": "Metric to use for comparing models when `load_best_model_at_end=True`. Defaults to 'loss'."
+        },
     )
     greater_is_better: bool | None = field(
-        default=None, metadata={"help": "Whether higher metric values are better. Defaults based on `metric_for_best_model`."}
+        default=None,
+        metadata={"help": "Whether higher metric values are better. Defaults based on `metric_for_best_model`."},
     )
 
     # --- Resuming Training ---
@@ -1216,7 +1237,10 @@ class TrainingArguments:
         },
     )
     seed: int = field(default=42, metadata={"help": "Random seed that will be set at the beginning of training."})
-    data_seed: int | None = field(default=None, metadata={"help": "Random seed to be used with data samplers. If not set, uses the same seed as `seed`."})
+    data_seed: int | None = field(
+        default=None,
+        metadata={"help": "Random seed to be used with data samplers. If not set, uses the same seed as `seed`."},
+    )
 
     # --- Hardware ---
     use_cpu: bool = field(
@@ -1270,14 +1294,17 @@ class TrainingArguments:
         },
     )
     remove_unused_columns: bool = field(
-        default=True, metadata={"help": "Whether or not to automatically remove the columns unused by the model forward method."}
+        default=True,
+        metadata={"help": "Whether or not to automatically remove the columns unused by the model forward method."},
     )
     label_names: list[str] | None = field(
         default=None, metadata={"help": "The list of keys in your dictionary of inputs that correspond to the labels."}
     )
     group_by_length: bool = field(
         default=False,
-        metadata={"help": "Whether or not to group samples of roughly the same length together when batching. Only useful if applying dynamic padding."},
+        metadata={
+            "help": "Whether or not to group samples of roughly the same length together when batching. Only useful if applying dynamic padding."
+        },
     )
     length_column_name: str = field(
         default="length",
@@ -1321,9 +1348,7 @@ class TrainingArguments:
     )
     ddp_timeout: int = field(
         default=1800,
-        metadata={
-            "help": "The timeout for `torch.distributed.init_process_group` calls (in seconds)."
-        },
+        metadata={"help": "The timeout for `torch.distributed.init_process_group` calls (in seconds)."},
     )
 
     # --- FSDP ---
@@ -1346,9 +1371,7 @@ class TrainingArguments:
     # --- DeepSpeed ---
     deepspeed: dict | str | None = field(
         default=None,
-        metadata={
-            "help": "Enable DeepSpeed integration. Value is a path to a JSON config file or a dict."
-        },
+        metadata={"help": "Enable DeepSpeed integration. Value is a path to a JSON config file or a dict."},
     )
 
     # --- Debugging ---
@@ -1359,16 +1382,36 @@ class TrainingArguments:
         },
     )
     skip_memory_metrics: bool = field(
-        default=True, metadata={"help": "Whether to skip adding memory profiler reports to metrics. Skipped by default because it slows down training."}
+        default=True,
+        metadata={
+            "help": "Whether to skip adding memory profiler reports to metrics. Skipped by default because it slows down training."
+        },
     )
 
     # --- External Script Flags ---
-    do_train: bool = field(default=False, metadata={"help": "Whether to run training. Not directly used by Trainer; intended for training/evaluation scripts."})
-    do_eval: bool = field(default=False, metadata={"help": "Whether to run evaluation. Not directly used by Trainer; intended for training/evaluation scripts."})
-    do_predict: bool = field(default=False, metadata={"help": "Whether to run predictions on the test set. Not directly used by Trainer; intended for training/evaluation scripts."})
+    do_train: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to run training. Not directly used by Trainer; intended for training/evaluation scripts."
+        },
+    )
+    do_eval: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to run evaluation. Not directly used by Trainer; intended for training/evaluation scripts."
+        },
+    )
+    do_predict: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to run predictions on the test set. Not directly used by Trainer; intended for training/evaluation scripts."
+        },
+    )
     resume_from_checkpoint: str | None = field(
         default=None,
-        metadata={"help": "Path to a folder with a valid checkpoint for your model. Not directly used by Trainer; intended for training/evaluation scripts."},
+        metadata={
+            "help": "Path to a folder with a valid checkpoint for your model. Not directly used by Trainer; intended for training/evaluation scripts."
+        },
     )
 
     # --- Deprecated / Internal ---
@@ -1550,6 +1593,7 @@ class TrainingArguments:
             self.dataloader_pin_memory = False
 
         # ── 11. FSDP ──
+        # Store args only (not the plugin itself) to avoid pickle issues
         self.fsdp_plugin_args = self._process_fsdp_args()
 
         # ── 12. DeepSpeed (must be last) ──
@@ -1626,9 +1670,7 @@ class TrainingArguments:
 
         if is_torch_available():
             if self.bf16 or self.bf16_full_eval:
-                if (
-                    not self.use_cpu and not is_torch_bf16_gpu_available() and not is_torch_xla_available()
-                ):
+                if not self.use_cpu and not is_torch_bf16_gpu_available() and not is_torch_xla_available():
                     error_message = "Your setup doesn't support bf16/gpu. You need to assign use_cpu if you want to train the model on CPU."
                     if is_torch_cuda_available():
                         error_message += " You need Ampere+ GPU with cuda>=11.0."
