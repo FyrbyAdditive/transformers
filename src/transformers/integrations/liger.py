@@ -25,7 +25,7 @@ from ..utils import is_liger_kernel_available, logging
 logger = logging.get_logger(__name__)
 
 
-def apply_liger_kernel(model, args):
+def apply_liger_kernel(model, kernel_config):
     """
     Apply Liger Kernel optimizations to a model instance.
 
