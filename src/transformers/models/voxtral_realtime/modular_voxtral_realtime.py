@@ -211,10 +211,8 @@ class VoxtralRealtimeEmbedder(nn.Module):
 class VoxtralRealtimeEncoderLayer(GradientCheckpointingLayer):
     def __init__(self, config, layer_idx: int):
         super().__init__()
-        self.embed_dim = config.d_model
         self.self_attn = VoxtralRealtimeAttention(config, layer_idx)
         self.self_attn_layer_norm = VoxtralRealtimeRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.dropout = config.dropout
         self.activation_fn = ACT2FN[config.activation_function]
         self.activation_dropout = config.activation_dropout
         self.final_layer_norm = VoxtralRealtimeRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -252,7 +250,6 @@ class VoxtralRealtimeEncoderLayer(GradientCheckpointingLayer):
             position_embeddings=position_embeddings,
             **kwargs,
         )
-        hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         hidden_states = residual + hidden_states
 
         residual = hidden_states
