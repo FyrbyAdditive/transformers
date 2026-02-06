@@ -242,7 +242,31 @@ def main():
 
     if args.push_to_hub:
         print(f"\nPushing to Hub as PR...")
-        result = tok_converted.push_to_hub(args.model_name, create_pr=True)
+        pr_description = f"""## Tokenizer Conversion
+
+This PR adds a converted tokenizer that works without `trust_remote_code=True`.
+
+### Conversion Details
+- Converted using: `python scripts/convert_tokenizer.py {args.model_name} --push-to-hub`
+- Original tokenizer type: `{type(tok_original).__name__}`
+- Converted tokenizer type: `{type(tok_converted).__name__}`
+
+### Validation Results
+- Tested on XNLI dataset ({args.num_samples} samples)
+- **All samples match 1-1** ✓
+
+### Usage
+```python
+from transformers import AutoTokenizer
+
+# Now works without trust_remote_code=True
+tokenizer = AutoTokenizer.from_pretrained("{args.model_name}")
+```
+
+---
+*Converted with [transformers](https://github.com/huggingface/transformers) tokenizer conversion script*
+"""
+        result = tok_converted.push_to_hub(args.model_name, create_pr=True, commit_message="Add converted tokenizer (no trust_remote_code needed)", commit_description=pr_description)
         print(f"  PR URL: {result.pr_url}")
 
     print("\nDone!")
