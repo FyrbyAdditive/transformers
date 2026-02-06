@@ -44,7 +44,7 @@ def apply_liger_kernel(model, kernel_config):
 
     from liger_kernel.transformers import _apply_liger_kernel_to_instance
 
-    kernel_config = args.liger_kernel_config if args.liger_kernel_config is not None else {}
+    kernel_config = kernel_config or {}
     base_model = unwrap_peft_model(model)
 
     if isinstance(base_model, PreTrainedModel):
