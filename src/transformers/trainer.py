@@ -32,7 +32,7 @@ import warnings
 from collections.abc import Callable, Iterator, Mapping
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any
 
 
 # Integrations must be imported before ML frameworks:
@@ -367,8 +367,8 @@ class Trainer:
         model: PreTrainedModel | nn.Module | None = None,
         args: TrainingArguments | None = None,
         data_collator: DataCollator | None = None,
-        train_dataset: Union[Dataset, IterableDataset, "datasets.Dataset"] | None = None,
-        eval_dataset: Union[Dataset, dict[str, Dataset], "datasets.Dataset"] | None = None,
+        train_dataset: "Dataset | IterableDataset | datasets.Dataset | None" = None,
+        eval_dataset: "Dataset | dict[str, Dataset] | datasets.Dataset | None" = None,
         processing_class: PreTrainedTokenizerBase
         | BaseImageProcessor
         | FeatureExtractionMixin
@@ -1623,7 +1623,7 @@ class Trainer:
         except (NameError, AttributeError, TypeError):  # no dataset or length, estimate by length of dataloader
             return len(dataloader) * self.args.per_device_train_batch_size
 
-    def _hp_search_setup(self, trial: Union["optuna.Trial", dict[str, Any]]):
+    def _hp_search_setup(self, trial: "optuna.Trial | dict[str, Any]"):
         """HP search setup code"""
         self._trial = trial
 
@@ -1675,7 +1675,7 @@ class Trainer:
 
         self.create_accelerator_and_postprocess()
 
-    def _report_to_hp_search(self, trial: Union["optuna.Trial", dict[str, Any]], step: int, metrics: dict[str, float]):
+    def _report_to_hp_search(self, trial: "optuna.Trial | dict[str, Any]", step: int, metrics: dict[str, float]):
         if self.hp_search_backend is None or trial is None:
             return
         metrics = metrics.copy()
