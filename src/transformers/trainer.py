@@ -394,18 +394,17 @@ class Trainer:
         preprocess_logits_for_metrics: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
     ):
         # Init flow:
-        #   1. Args & seed                – defaults, determinism
-        #   2. Accelerator & logging      – accelerator, memory tracker, log level, device setup
-        #   3. Model resolution           – model / model_init, Liger Kernel, quantization checks
-        #   4. Distributed strategy       – model-parallel, FSDP, SageMaker MP flags
-        #   5. Data                        – collator, datasets, processing class
-        #   6. Device placement           – move model to device, model wrapping
-        #   7. Model introspection        – loss kwargs, label names, label smoother
-        #   8. User-supplied arguments    – callables, optimizer, scheduler, validation
-        #   9. Callbacks                  – reporting integrations, JIT checkpoint, progress bar
-        #  10. Hub & output               – repo init, output directory
-        #  11. Training state             – TrainerState, TrainerControl, internal bookkeeping
-        #  12. Finalize                   – use_cache, XLA FSDPv2 mesh, memory tracker stop
+        #   1. Args & seed               – defaults, determinism
+        #   2. Accelerator & logging     – accelerator, memory tracker, log level, device setup
+        #   3. Model resolution          – model / model_init, Liger Kernel, quantization checks
+        #   4. Distributed strategy      – model-parallel, FSDP, SageMaker MP flags
+        #   5. Device placement          – move model to device, model wrapping
+        #   6. Model introspection       – loss kwargs, label names, label smoother
+        #   7. Store init arguments      – data, callables, optimizer, scheduler, validation
+        #   8. Callbacks                 – reporting integrations, JIT checkpoint, progress bar
+        #   9. Hub & output              – repo init, output directory
+        #  10. Training state            – TrainerState, TrainerControl, internal bookkeeping
+        #  11. Finalize                  – use_cache, XLA FSDPv2 mesh, memory tracker stop
 
         # ---- 1. Args & seed --------------------------------------------------------
         if args is None:
@@ -497,19 +496,7 @@ class Trainer:
                 )
                 args.fp16 = smp.state.cfg.fp16
 
-        # ---- 5. Data ----------------------------------------------------------------
-        default_collator = (
-            DataCollatorWithPadding(processing_class)
-            if processing_class is not None
-            and isinstance(processing_class, (PreTrainedTokenizerBase, SequenceFeatureExtractor))
-            else default_data_collator
-        )
-        self.data_collator = data_collator if data_collator is not None else default_collator
-        self.train_dataset = train_dataset
-        self.eval_dataset = eval_dataset
-        self.processing_class = processing_class
-
-        # ---- 6. Device placement ----------------------------------------------------
+        # ---- 5. Device placement ----------------------------------------------------
         # Bnb Quantized models don't support `.to` operation.
         if (
             self.place_model_on_device
@@ -525,7 +512,7 @@ class Trainer:
         self.model_wrapped = model
         self.model = model
 
-        # ---- 7. Model introspection -------------------------------------------------
+        # ---- 6. Model introspection -------------------------------------------------
         unwrapped_model = unwrap_peft_model(self.accelerator.unwrap_model(model))
 
         if hasattr(unwrapped_model, "accepts_loss_kwargs"):
@@ -559,16 +546,32 @@ class Trainer:
         else:
             self.label_smoother = None
 
-        # ---- 8. User-supplied arguments ---------------------------------------------
+        # ---- 7. Store init arguments ------------------------------------------------
+        # Data
+        default_collator = (
+            DataCollatorWithPadding(processing_class)
+            if processing_class is not None
+            and isinstance(processing_class, (PreTrainedTokenizerBase, SequenceFeatureExtractor))
+            else default_data_collator
+        )
+        self.data_collator = data_collator if data_collator is not None else default_collator
+        self.train_dataset = train_dataset
+        self.eval_dataset = eval_dataset
+        self.processing_class = processing_class
+
+        # Callables
         self.compute_loss_func = compute_loss_func
         self.compute_metrics = compute_metrics
         self.preprocess_logits_for_metrics = preprocess_logits_for_metrics
         self.neftune_noise_alpha = args.neftune_noise_alpha
+
+        # Optimizer & scheduler
         self.optimizer, self.lr_scheduler = optimizers
         self.optimizer_cls_and_kwargs = optimizer_cls_and_kwargs
+
         self._validate_args(compute_metrics, eval_dataset, train_dataset, model_init)
 
-        # ---- 9. Callbacks -----------------------------------------------------------
+        # ---- 8. Callbacks -----------------------------------------------------------
         default_callbacks = DEFAULT_CALLBACKS + get_reporting_integration_callbacks(self.args.report_to)
 
         if self.args.enable_jit_checkpoint:
@@ -584,14 +587,14 @@ class Trainer:
         )
         self.add_callback(PrinterCallback if self.args.disable_tqdm else DEFAULT_PROGRESS_CALLBACK)
 
-        # ---- 10. Hub & output --------------------------------------------------------
+        # ---- 9. Hub & output ---------------------------------------------------------
         self.hub_model_id = None
         if self.args.push_to_hub:
             self.init_hf_repo()
         if self.args.should_save:
             os.makedirs(self.args.output_dir, exist_ok=True)
 
-        # ---- 11. Training state -----------------------------------------------------
+        # ---- 10. Training state -----------------------------------------------------
         self.control = TrainerControl()
         self.state = TrainerState(
             is_local_process_zero=self.is_local_process_zero(),
@@ -611,7 +614,7 @@ class Trainer:
 
         self.control = self.callback_handler.on_init_end(self.args, self.state, self.control)
 
-        # ---- 12. Finalize -----------------------------------------------------------
+        # ---- 11. Finalize -----------------------------------------------------------
         if getattr(self.model, "config", None) is not None:
             self.model.config.use_cache = self.args.use_cache
 
