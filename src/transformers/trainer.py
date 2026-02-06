@@ -362,9 +362,9 @@ class Trainer:
           model hasn't been wrapped, then `self.model_wrapped` is the same as `self.model`.
         - **is_model_parallel** -- Whether or not a model has been switched to a model parallel mode (different from
           data parallelism, this means some of the model layers are split on different GPUs).
-        - **place_model_on_device** -- Whether or not to automatically place the model on the device - it will be set
-          to `False` if model parallel or deepspeed is used, or if the default
-          `TrainingArguments.place_model_on_device` is overridden to return `False` .
+        - **place_model_on_device** -- Whether or not to automatically place the model on the device. Defaults to
+          `True` unless model parallel, DeepSpeed, FSDP, full fp16/bf16 eval, or SageMaker MP is active. Can be
+          explicitly set via `TrainingArguments.place_model_on_device`.
         - **is_in_train** -- Whether or not a model is currently running `train` (e.g. when `evaluate` is called while
           in `train`)
 
@@ -474,15 +474,19 @@ class Trainer:
                 raise ValueError("Using fsdp only works in distributed training.")
 
         # Postpone switching model to cuda when MP, DeepSpeed, full bf16/fp16 eval, or FSDP
-        self.place_model_on_device = args.place_model_on_device
-        if (
+        if args.place_model_on_device is not None:
+            self.place_model_on_device = args.place_model_on_device
+        elif (
             self.is_model_parallel
             or self.is_deepspeed_enabled
             or (args.fp16_full_eval or args.bf16_full_eval)
             or self.is_fsdp_xla_enabled
             or self.is_fsdp_enabled
+            or is_sagemaker_mp_enabled()
         ):
             self.place_model_on_device = False
+        else:
+            self.place_model_on_device = True
 
         # SageMaker Model Parallel mixed-precision setup
         if is_sagemaker_mp_enabled():

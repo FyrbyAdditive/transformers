@@ -1415,6 +1415,12 @@ class TrainingArguments:
             "help": "Whether or not to use cache for the model For training, this is usually not needed apart from some PEFT methods that uses `past_key_values`."
         },
     )
+    place_model_on_device: bool | None = field(
+        default=None,
+        metadata={
+            "help": "Whether to automatically place the model on the device. When `None` (default), the Trainer decides."
+        },
+    )
 
     def __post_init__(self):
         # Set default output_dir if not provided
@@ -1974,13 +1980,6 @@ class TrainingArguments:
         log_level_main_node = logging.get_verbosity() if log_level == -1 else log_level
         log_level_replica_node = logging.get_verbosity() if log_level_replica == -1 else log_level_replica
         return log_level_main_node if self.should_log else log_level_replica_node
-
-    @property
-    def place_model_on_device(self):
-        """
-        Can be subclassed and overridden for some specific integrations.
-        """
-        return not is_sagemaker_mp_enabled()
 
     @property
     def _no_sync_in_gradient_accumulation(self):
