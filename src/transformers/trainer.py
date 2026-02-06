@@ -451,7 +451,7 @@ class Trainer:
             )
 
         if self.args.use_liger_kernel:
-            apply_liger_kernel(model, self.args)
+            apply_liger_kernel(model, self.args.liger_kernel_config)
 
         validate_quantization_for_training(model)
 
