@@ -64,13 +64,14 @@ from .image_processing_utils import BaseImageProcessor
 from .integrations.deepspeed import (
     deepspeed_init,
     deepspeed_load_checkpoint,
+    deepspeed_sp_compute_loss,
     is_deepspeed_available,
     propagate_args_to_deepspeed,
 )
 from .integrations.fsdp import get_fsdp_ckpt_kwargs, update_fsdp_plugin_peft
 from .integrations.neftune import activate_neftune, deactivate_neftune
 from .integrations.peft import MIN_PEFT_VERSION
-from .integrations.tpu import tpu_spmd_dataloader
+from .integrations.tpu import save_tpu_checkpoint, tpu_spmd_dataloader, wrap_model_xla_fsdp
 from .modelcard import TrainingSummary
 from .modeling_utils import PreTrainedModel, unwrap_model
 from .models.auto.modeling_auto import (
@@ -1745,99 +1746,7 @@ class Trainer:
 
         # Distributed training using PyTorch FSDP
         if self.is_fsdp_xla_enabled:
-            try:
-                from torch_xla.distributed.fsdp import XlaFullyShardedDataParallel as FSDP
-                from torch_xla.distributed.fsdp import checkpoint_module
-                from torch_xla.distributed.fsdp.wrap import (
-                    size_based_auto_wrap_policy,
-                    transformer_auto_wrap_policy,
-                )
-
-                if self.is_fsdp_xla_v2_enabled:
-                    from torch_xla.experimental.spmd_fully_sharded_data_parallel import (
-                        SpmdFullyShardedDataParallel as FSDPv2,
-                    )
-            except ImportError:
-                raise ImportError("Missing XLA FSDP related module; please make sure to use torch-xla >= 2.0.")
-            auto_wrap_policy = None
-            auto_wrapper_callable = None
-            default_transformer_cls_names_to_wrap = getattr(model, "_no_split_modules", None)
-            fsdp_transformer_layer_cls_to_wrap = self.args.fsdp_config.get(
-                "transformer_layer_cls_to_wrap", default_transformer_cls_names_to_wrap
-            )
-
-            if self.args.fsdp_config["min_num_params"] > 0:
-                auto_wrap_policy = functools.partial(
-                    size_based_auto_wrap_policy, min_num_params=self.args.fsdp_config["min_num_params"]
-                )
-            elif fsdp_transformer_layer_cls_to_wrap is not None:
-                transformer_cls_to_wrap = set()
-                for layer_class in fsdp_transformer_layer_cls_to_wrap:
-                    transformer_cls = get_module_class_from_name(model, layer_class)
-                    if transformer_cls is None:
-                        raise Exception("Could not find the transformer layer class to wrap in the model.")
-                    else:
-                        transformer_cls_to_wrap.add(transformer_cls)
-
-                auto_wrap_policy = functools.partial(
-                    transformer_auto_wrap_policy,
-                    # Transformer layer class to wrap
-                    transformer_layer_cls=transformer_cls_to_wrap,
-                )
-            fsdp_kwargs = self.args.xla_fsdp_config
-            if self.args.fsdp_config["xla_fsdp_grad_ckpt"]:
-                if model.config.use_cache:
-                    logger.warning_once(
-                        "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
-                    )
-                    model.config.use_cache = False
-
-                # Apply gradient checkpointing to auto-wrapped sub-modules if specified
-                def auto_wrapper_callable(m, *args, **kwargs):
-                    target_cls = FSDP if not self.is_fsdp_xla_v2_enabled else FSDPv2
-                    return target_cls(checkpoint_module(m), *args, **kwargs)
-
-            # Wrap the base model with an outer FSDP wrapper
-            if self.is_fsdp_xla_v2_enabled:
-
-                def shard_output(output, mesh):
-                    from .modeling_outputs import CausalLMOutputWithPast
-
-                    real_output = None
-                    if isinstance(output, torch.Tensor):
-                        real_output = output
-                    elif isinstance(output, tuple):
-                        real_output = output[0]
-                    elif isinstance(output, CausalLMOutputWithPast):
-                        real_output = output.logits
-
-                    if real_output is None:
-                        raise ValueError("Something went wrong, the output of the model shouldn't be `None`")
-                    xs.mark_sharding(real_output, mesh, ("fsdp", None, None))
-
-                self.model = model = FSDPv2(
-                    model,
-                    shard_output=shard_output,
-                    auto_wrap_policy=auto_wrap_policy,
-                    auto_wrapper_callable=auto_wrapper_callable,
-                )
-            else:
-                self.model = model = FSDP(
-                    model,
-                    auto_wrap_policy=auto_wrap_policy,
-                    auto_wrapper_callable=auto_wrapper_callable,
-                    **fsdp_kwargs,
-                )
-
-            # Patch `xm.optimizer_step` should not reduce gradients in this case,
-            # as FSDP does not need gradient reduction over sharded parameters.
-            def patched_optimizer_step(optimizer, barrier=False, optimizer_args={}):
-                loss = optimizer.step(**optimizer_args)
-                if barrier:
-                    xm.mark_step()
-                return loss
-
-            xm.optimizer_step = patched_optimizer_step
+            self.model = model = wrap_model_xla_fsdp(model, self.args, self.is_fsdp_xla_v2_enabled)
         elif is_sagemaker_dp_enabled():
             model = nn.parallel.DistributedDataParallel(
                 model, device_ids=[int(os.getenv("SMDATAPARALLEL_LOCAL_RANK"))]
@@ -3630,7 +3539,7 @@ class Trainer:
         """
         pc = getattr(self.accelerator, "parallelism_config", None)
         if pc is not None and pc.sp_backend == "deepspeed" and pc.sp_enabled:
-            return self._deepspeed_sp_compute_loss(model, inputs, return_outputs, pc)
+            return deepspeed_sp_compute_loss(self.accelerator, model, inputs, return_outputs, pc)
 
         if (self.label_smoother is not None or self.compute_loss_func is not None) and "labels" in inputs:
             labels = inputs.pop("labels")
@@ -3685,55 +3594,6 @@ class Trainer:
 
         return (loss, outputs) if return_outputs else loss
 
-    def _deepspeed_sp_compute_loss(self, model, inputs, return_outputs, pc):
-        """
-        How the loss is computed by the Trainer under sequence parallelism with sp_backend=="deepspeed" and sp_size>1.
-        Performs weighted loss aggregation across SP ranks, accounting for varying numbers of valid tokens per rank
-        (e.g., when some ranks receive only padding or prompt tokens that are masked with -100).
-
-        Args:
-            model (`nn.Module`):
-                The model to compute the loss for.
-            inputs (`dict[str, torch.Tensor | Any]`):
-                The input data for the model. Must include "shift_labels" key.
-            return_outputs (`bool`, *optional*, defaults to `False`):
-                Whether to return the model outputs along with the loss.
-            pc (`accelerate.parallelism_config.ParallelismConfig`):
-                self.accelerator.parallelism_config object (not None)
-
-        Returns:
-            The loss of the model along with its output if return_outputs was set to True
-        """
-
-        # DeepSpeed SP automatically injects shift_labels into inputs (pre-shifted labels for SP).
-        # The model's forward pass receives shift_labels via **kwargs and passes it to the loss function.
-        # Both standard transformer models and Liger-patched models handle shift_labels correctly,
-        # so we can directly use the computed loss from the model output.
-        # See: https://huggingface.co/docs/accelerate/en/concept_guides/sequence_parallelism
-        if "labels" not in inputs and "shift_labels" in inputs:
-            # DeepSpeed SP Dataloader removes "labels" but we need it, otherwise, we won't compute the loss.
-            inputs["labels"] = inputs["shift_labels"]
-        outputs = model(**inputs)
-        loss = outputs.loss
-
-        sp_group = self.accelerator.torch_device_mesh["sp"].get_group()
-        sp_world_size = pc.sp_size
-        # differentiable weighted per-shard-loss aggregation across ranks
-        losses_per_rank = torch.distributed.nn.functional.all_gather(loss, group=sp_group)
-        # special dealing with SFT that has prompt tokens that aren't used in loss computation
-        good_tokens = (inputs["shift_labels"] != -100).view(-1).sum()
-        good_tokens_per_rank = torch.distributed.nn.functional.all_gather(good_tokens, group=sp_group)
-        # Skip ranks with zero valid tokens
-        total_loss = sum(
-            losses_per_rank[rank] * good_tokens_per_rank[rank]
-            for rank in range(sp_world_size)
-            if good_tokens_per_rank[rank] > 0
-        )
-        total_good_tokens = sum(good_tokens_per_rank)
-        loss = total_loss / max(total_good_tokens, 1)
-
-        return (loss, outputs) if return_outputs else loss
-
     def is_local_process_zero(self) -> bool:
         """
         Whether or not this process is the local (e.g., on one machine if training in a distributed fashion on several
@@ -3763,7 +3623,9 @@ class Trainer:
             output_dir = self.args.output_dir
 
         if is_torch_xla_available():
-            self._save_tpu(output_dir)
+            save_tpu_checkpoint(
+                self.model, self.args, self.accelerator, self.processing_class, self.is_fsdp_xla_v1_enabled, output_dir
+            )
         elif is_sagemaker_mp_enabled():
             # Calling the state_dict needs to be done on the wrapped model and on all processes.
             os.makedirs(output_dir, exist_ok=True)
@@ -3807,69 +3669,6 @@ class Trainer:
         # Push to the Hub when `save_model` is called by the user.
         if self.args.push_to_hub and not _internal_call:
             self.push_to_hub(commit_message="Model save", revision=self.args.hub_revision)
-
-    def _save_tpu(self, output_dir: str | None = None):
-        output_dir = output_dir if output_dir is not None else self.args.output_dir
-
-        logger.info(f"Saving model checkpoint to {output_dir}")
-        model = self.model
-        xm.mark_step()
-
-        if xm.is_master_ordinal(local=False):
-            os.makedirs(output_dir, exist_ok=True)
-            torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
-
-        # Save a trained model and configuration using `save_pretrained()`.
-        # They can then be reloaded using `from_pretrained()`
-        supported_classes = (PushToHubMixin,)
-        xm.rendezvous("saving_checkpoint")
-        if self.is_fsdp_xla_v1_enabled:
-            ckpt = {
-                "model": model.state_dict(),
-                "shard_metadata": model.get_shard_metadata(),
-            }
-            ckpt_path = os.path.join(
-                output_dir, f"rank{self.args.process_index}-of-{self.args.world_size}-{WEIGHTS_NAME}"
-            )
-            # All ranks save sharded checkpoint
-            xm.save(ckpt, ckpt_path, master_only=False)
-            # Make sure all ranks have saved checkpoints
-            xm.rendezvous("save_full_checkpoints")
-            # Master save full checkpoint
-            if self.args.should_save:
-                from torch_xla.distributed.fsdp import consolidate_sharded_model_checkpoints
-
-                full_state_dict, _ = consolidate_sharded_model_checkpoints(
-                    ckpt_prefix=os.path.join(output_dir, ""),
-                    ckpt_suffix=f"rank*-of-*-{WEIGHTS_NAME}",
-                    save_model=False,
-                )
-                model = model.module.module
-                unwrapped_model = self.accelerator.unwrap_model(model)
-                if isinstance(unwrapped_model, supported_classes):
-                    unwrapped_model.save_pretrained(output_dir, state_dict=full_state_dict)
-                else:
-                    logger.info("Trainer.model is not a `PreTrainedModel`, only saving its state dict.")
-                    xm.save(full_state_dict, os.path.join(output_dir, WEIGHTS_NAME))
-        elif not isinstance(model, supported_classes):
-            if isinstance(self.accelerator.unwrap_model(model), supported_classes):
-                self.accelerator.unwrap_model(model).save_pretrained(
-                    output_dir,
-                    is_main_process=self.args.should_save,
-                    state_dict=xm._maybe_convert_to_cpu(model.state_dict()),
-                )
-            else:
-                logger.info("Trainer.model is not a `PreTrainedModel`, only saving its state dict.")
-                state_dict = xm._maybe_convert_to_cpu(model.state_dict())
-                xm.save(state_dict, os.path.join(output_dir, WEIGHTS_NAME))
-        else:
-            model.save_pretrained(
-                output_dir,
-                is_main_process=self.args.should_save,
-                state_dict=xm._maybe_convert_to_cpu(model.state_dict()),
-            )
-        if self.processing_class is not None and self.args.should_save:
-            self.processing_class.save_pretrained(output_dir)
 
     def _save(self, output_dir: str | None = None, state_dict=None):
         # If we are executing this function, we are the process zero, so we don't check for that.
