@@ -829,8 +829,6 @@ class TrainerIntegrationPrerunTest(TestCasePlus, TrainerIntegrationCommon):
 
     @slow
     def test_gradient_accumulation_loss_alignment_with_model_loss(self):
-        set_seed(42)
-
         model_name = "nickypro/tinyllama-15M"
         dataset_name = "wikitext"
         dataset_config = "wikitext-2-raw-v1"
@@ -928,8 +926,6 @@ class TrainerIntegrationPrerunTest(TestCasePlus, TrainerIntegrationCommon):
         self.assertLess(relative_diff, 0.2, f"Relative difference {relative_diff} is not within 0.2")
 
     def test_gradient_accumulation_loss_alignment_with_loss_func(self):
-        set_seed(42)
-
         model_name = "roneneldan/TinyStories-33M"
         dataset_name = "Salesforce/wikitext"
         dataset_config = "wikitext-2-raw-v1"

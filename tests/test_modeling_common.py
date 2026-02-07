@@ -234,8 +234,6 @@ def _test_eager_matches_sdpa_inference(
         return False
 
     for model_class in self.all_model_classes:
-        # Set seed for deterministic test - ensures reproducible model initialization and inputs
-        set_seed(42)
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
         set_config_for_less_flaky_test(config)
 
@@ -558,8 +556,6 @@ def _test_eager_matches_batched_and_grouped_inference(self, name, dtype):
         )
 
     for model_class in self.all_model_classes:
-        # Set seed for deterministic test - ensures reproducible model initialization and inputs
-        set_seed(42)
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
         set_config_for_less_flaky_test(config)
         model = model_class(config).eval().to(torch_device).to(dtype)
@@ -1370,8 +1366,6 @@ class ModelTesterMixin:
         as `self.x = torch.tensor(...)` in a Module (as we cannot correctly recover from meta device if it's not
         registered as parameter/buffer). To test this, we initialize the model on a meta device and then move it onto
         the torch_device and perform a forward pass."""
-        # Set seed to ensure stable model initialization - avoids numerical issues (NaN) with some models
-        set_seed(42)
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
 
         for model_class in self.all_model_classes:
@@ -1537,8 +1531,6 @@ class ModelTesterMixin:
                     msg += str(e)
                     raise AssertionError(msg)
 
-        # Set seed for deterministic test - ensures reproducible model initialization and inputs
-        set_seed(42)
         config, batched_input = self.model_tester.prepare_config_and_inputs_for_common()
         set_config_for_less_flaky_test(config)
 
@@ -1667,7 +1659,6 @@ class ModelTesterMixin:
 
                 inputs = self._prepare_for_class(inputs_dict, model_class, return_labels=True)
 
-                set_seed(42)
                 model = model_class(config)
                 model.to(torch_device)
                 model.train()
@@ -2031,7 +2022,6 @@ class ModelTesterMixin:
             inputs_dict,
         ) = self.model_tester.prepare_config_and_inputs_for_common()
         for model_class in self.all_model_classes:
-            set_seed(42)
             model = model_class(copy.deepcopy(original_config))
             model.to(torch_device)
             model.eval()
@@ -2866,7 +2856,6 @@ class ModelTesterMixin:
             inputs_dict_class = self._prepare_for_class(inputs_dict, model_class)
             model = model_class(copy.deepcopy(config)).eval()
             model = model.to(torch_device)
-            set_seed(42)
             base_output = model(**inputs_dict_class)
 
             model_size = compute_module_sizes(model)[0][""]
@@ -2915,7 +2904,6 @@ class ModelTesterMixin:
             inputs_dict_class = self._prepare_for_class(inputs_dict, model_class)
             model = model_class(copy.deepcopy(config)).eval()
             model = model.to(torch_device)
-            set_seed(42)
             base_output = model(**inputs_dict_class)
 
             model_size = compute_module_sizes(model)[0][""]
@@ -2956,7 +2944,6 @@ class ModelTesterMixin:
             model = model_class(copy.deepcopy(config)).eval()
             model = model.to(torch_device)
 
-            set_seed(42)
             base_output = model(**inputs_dict_class)
 
             model_size = compute_module_sizes(model)[0][""]
@@ -2999,7 +2986,6 @@ class ModelTesterMixin:
             model = model_class(config).eval()
             model = model.to(torch_device)
 
-            set_seed(42)
             base_output = model(**inputs_dict_class)
 
             model_size = compute_module_sizes(model)[0][""]
@@ -3119,9 +3105,6 @@ class ModelTesterMixin:
         if not self.test_mismatched_shapes:
             self.skipTest(reason="test_mismatched_shapes is set to False")
 
-        # Set seed for deterministic weight initialization
-        set_seed(42)
-
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
 
         configs_no_init = _config_zero_init(config)
@@ -3235,8 +3218,6 @@ class ModelTesterMixin:
             if not model_class._supports_attention_backend and not attn_implementation.startswith("flash_attention"):
                 continue
 
-            # Set seed for deterministic test - ensures reproducible model initialization and inputs
-            set_seed(42)
             config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
 
             # flash attention variants does not always support arbitrary headim
@@ -4968,7 +4949,6 @@ class ModelTesterMixin:
             model = model_class(config).eval()
             model = model.to(torch_device)
 
-            set_seed(42)
             with torch.no_grad():
                 outputs = model.get_text_features(**inputs_dict)
 
@@ -5086,7 +5066,6 @@ class ModelTesterMixin:
             model = model_class(config).eval()
             model = model.to(torch_device)
 
-            set_seed(42)
             with torch.no_grad():
                 outputs = model.get_image_features(**inputs_dict)
 
@@ -5247,7 +5226,6 @@ class ModelTesterMixin:
             model = model_class(config).eval()
             model = model.to(torch_device)
 
-            set_seed(42)
             with torch.no_grad():
                 outputs = model.get_audio_features(**inputs_dict)
 
@@ -5379,7 +5357,6 @@ class ModelTesterMixin:
             model = model_class(config).eval()
             model = model.to(torch_device)
 
-            set_seed(42)
             with torch.no_grad():
                 outputs = model.get_video_features(**inputs_dict)
 

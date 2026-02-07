@@ -31,6 +31,7 @@ from transformers.testing_utils import (
     patch_testing_methods_to_collect_info,
     patch_torch_compile_force_graph,
 )
+from transformers.trainer_utils import set_seed
 from transformers.utils import enable_tf32
 
 
@@ -79,6 +80,51 @@ sys.path.insert(1, git_repo_path)
 # silence FutureWarning warnings in tests since often we can't act on them until
 # they become normal warnings - i.e. the tests still need to test the current functionality
 warnings.simplefilter(action="ignore", category=FutureWarning)
+
+
+@pytest.fixture(autouse=True)
+def setup_deterministic_testing():
+    """
+    Global fixture to ensure deterministic behavior across all tests.
+    Sets PyTorch to single-threaded mode and resets the random seed.
+
+    Note: We don't use deterministic=True globally as it changes numerical behavior
+    in ways that break many tests (e.g., test_feed_forward_chunking). Instead, we rely
+    on single-threading and seed resetting for reproducibility.
+    """
+    if is_torch_available():
+        import torch
+
+        # Force single-threaded execution to avoid non-deterministic thread scheduling
+        torch.set_num_threads(1)
+
+        # Set seed but don't force deterministic algorithms (would break many tests)
+        set_seed(42, deterministic=False)
+    else:
+        # Still set seed for random and numpy even without torch
+        set_seed(42, deterministic=False)
+
+
+@pytest.fixture
+def enable_deterministic_algorithms():
+    """
+    Optional fixture for tests that need strict deterministic algorithms.
+    Use this by adding it as a parameter to your test function:
+
+        def test_something(self, enable_deterministic_algorithms):
+            # Your test code here
+
+    This will enable torch.use_deterministic_algorithms(True) for that specific test.
+    """
+    if is_torch_available():
+        import torch
+
+        original_value = torch.are_deterministic_algorithms_enabled()
+        torch.use_deterministic_algorithms(True)
+        yield
+        torch.use_deterministic_algorithms(original_value)
+    else:
+        yield
 
 
 def pytest_configure(config):
