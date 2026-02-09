@@ -439,6 +439,25 @@ class Gemma3Vision2TextModelTest(ModelTesterMixin, GenerationTesterMixin, unitte
             for_causal_lm = AutoModelForCausalLM.from_pretrained(tmp_dir)
             self.assertIsInstance(for_causal_lm, Gemma3ForConditionalGeneration)
 
+    def test_text_only_training_without_token_type_ids(self):
+        """
+        Regression test: Gemma3 multimodal model should support text-only training
+        without requiring token_type_ids. When no images are present, token_type_ids
+        are unnecessary and the masking logic handles the None case correctly.
+        """
+        config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
+        model = Gemma3ForConditionalGeneration(config).to(torch_device)
+        model.train()
+
+        # Remove vision inputs and token_type_ids — pure text training
+        inputs_dict.pop("pixel_values", None)
+        inputs_dict.pop("token_type_ids", None)
+        inputs_dict["labels"] = inputs_dict["input_ids"].clone()
+
+        # Should not raise ValueError about token_type_ids
+        output = model(**inputs_dict)
+        self.assertIsNotNone(output.loss)
+
     @require_flash_attn
     @require_torch_accelerator
     @mark.flash_attn_test

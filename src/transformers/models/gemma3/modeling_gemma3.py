@@ -777,9 +777,6 @@ def create_causal_mask_mapping(
 
     Uses `pixel_values` as an optional input to disambiguate edge cases.
     """
-    if is_training and token_type_ids is None:
-        raise ValueError("`token_type_ids` is required as a model input when training")
-
     mask_kwargs = {
         "config": config.get_text_config(),
         "input_embeds": input_embeds,
