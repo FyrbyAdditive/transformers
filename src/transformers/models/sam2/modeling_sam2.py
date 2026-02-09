@@ -41,11 +41,7 @@ from ...utils import (
     can_return_tuple,
     logging,
 )
-from ...utils.generic import (
-    TransformersKwargs,
-    is_flash_attention_requested,
-    merge_with_config_defaults,
-)
+from ...utils.generic import TransformersKwargs, is_flash_attention_requested, merge_with_config_defaults
 from ...utils.output_capturing import OutputRecorder, capture_outputs
 from ..auto import AutoModel
 from .configuration_sam2 import (

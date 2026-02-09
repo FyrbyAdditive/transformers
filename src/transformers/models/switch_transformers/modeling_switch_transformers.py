@@ -47,11 +47,7 @@ from ...utils import (
     is_torchdynamo_compiling,
     logging,
 )
-from ...utils.generic import (
-    can_return_tuple,
-    is_flash_attention_requested,
-    merge_with_config_defaults,
-)
+from ...utils.generic import can_return_tuple, is_flash_attention_requested, merge_with_config_defaults
 from ...utils.output_capturing import OutputRecorder, capture_outputs
 from .configuration_switch_transformers import SwitchTransformersConfig
 
