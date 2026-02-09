@@ -47,8 +47,12 @@ from ...utils import (
     is_torchdynamo_compiling,
     logging,
 )
-from ...utils.generic import can_return_tuple, check_model_inputs, is_flash_attention_requested
-from ...utils.output_capturing import OutputRecorder
+from ...utils.generic import (
+    can_return_tuple,
+    is_flash_attention_requested,
+    merge_with_config_defaults,
+)
+from ...utils.output_capturing import OutputRecorder, capture_outputs
 from .configuration_switch_transformers import SwitchTransformersConfig
 
 
@@ -680,7 +684,8 @@ class SwitchTransformersStack(SwitchTransformersPreTrainedModel):
 
         self.gradient_checkpointing = False
 
-    @check_model_inputs
+    @merge_with_config_defaults
+    @capture_outputs
     def forward(
         self,
         input_ids=None,
